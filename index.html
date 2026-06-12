@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Songo Multijoueur en Ligne</title>
+    <title>Songo Distant - Synchronisation AJAX</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- BARRE DE STATUT SUPÉRIEURE -->
     <header class="game-header">
         <div class="header-left">
             <button class="btn-icon" id="btn-open-menu">⚙️ Menu</button>
-            <div class="room-badge">Salon : <span id="top-room-id">#0000</span></div>
+            <div class="room-badge">Salon Distant : <span id="top-room-id">#0000</span></div>
         </div>
         <div class="header-center">
             <div class="turn-indicator">
-                <span class="pulse-icon">⏳</span> <span id="current-turn-val">Chargement...</span>
+                <span class="pulse-icon">⏳</span> <span id="current-turn-val">Connexion réseau...</span>
             </div>
         </div>
         <div class="header-right">
@@ -25,10 +24,8 @@
         </div>
     </header>
 
-    <!-- ZONE DE JEU PRINCIPALE -->
     <main class="game-container">
         
-        <!-- CÔTÉ NORD (ADVERSAIRE) -->
         <section class="player-side nord-side">
             <div class="side-info">
                 <h2 class="player-name" id="title-side-nord">Nord</h2>
@@ -54,12 +51,10 @@
             </div>
         </section>
 
-        <!-- BANDEAU CENTRAL MESSAGES -->
         <div class="center-status-bar">
-            <div id="center-message">Initialisation du plateau...</div>
+            <div id="center-message">Synchronisation AJAX active...</div>
         </div>
 
-        <!-- CÔTÉ SUD (JOUEUR LOCAL) -->
         <section class="player-side sud-side">
             <div class="board-row row-sud">
                 <div class="pits-container">
@@ -86,37 +81,33 @@
         </section>
     </main>
 
-    <!-- FOOTER : HISTORIQUE ET ACTIONS TECHNIQUES -->
     <footer class="game-footer">
         <div class="log-box">
-            <span class="log-title">Dernier coup :</span>
-            <span id="last-move-txt">Aucun coup joué pour le moment.</span>
+            <span class="log-title">Dernier coup distant :</span>
+            <span id="last-move-txt">En attente du premier coup...</span>
         </div>
         <div class="footer-actions">
-            <button class="btn-danger" id="btn-reset">Recommencer</button>
+            <button class="btn-danger" id="btn-reset">Recommencer la partie</button>
         </div>
     </footer>
 
-    <!-- PAGE D'ACCUEIL / MENU MULTIJOUEUR -->
     <div class="modal-overlay" id="menu-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h2>Songo En Ligne</h2>
+                <h2>Songo Distant (AJAX REST)</h2>
                 <button class="close-btn" id="btn-close-menu">x</button>
             </div>
 
             <div class="modal-body">
-                <!-- Configuration du Pseudo -->
                 <div class="config-group" style="margin-bottom: 15px;">
-                    <label for="input-player-name">VOTRE PSEUDO</label>
+                    <label for="input-player-name">VOTRE PSEUDO INTERNET</label>
                     <input type="text" id="input-player-name" value="Joueur" class="input-text-songo" maxlength="12">
                 </div>
 
                 <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 12px 0;">
 
-                <!-- GESTION DES SALONS -->
                 <div class="config-group">
-                    <label>REJOINDRE UN SALON EXISTANT</label>
+                    <label>REJOINDRE LE CODE D'UN AMI</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="number" id="input-join-room" placeholder="Ex: 4872" class="input-text-songo" style="flex: 1;" oninput="if(this.value.length > 4) this.value = this.value.slice(0,4);">
                         <button class="btn-modal btn-primary" id="btn-join-room" style="padding: 0 15px; margin: 0; font-size: 0.85rem;">Rejoindre</button>
@@ -124,45 +115,40 @@
                 </div>
 
                 <div style="margin-bottom: 15px;">
-                    <button class="btn-modal" id="btn-generate-room" style="width: 100%; font-size: 0.85rem; background: #27ae60; color: white;">🎲 Générer un nouveau salon (Nouvelle Partie)</button>
+                    <button class="btn-modal" id="btn-generate-room" style="width: 100%; font-size: 0.85rem; background: #27ae60; color: white;">🎲 Créer un nouveau salon distant</button>
                 </div>
 
-                <!-- OPTION : SALONS SAUVEGARDÉS -->
                 <div class="config-group" style="margin-bottom: 15px;">
                     <label>MES SALONS SAUVEGARDÉS</label>
                     <div id="saved-rooms-list" style="max-height: 90px; overflow-y: auto; background: rgba(0,0,0,0.05); padding: 5px; border-radius: 6px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
-                        <!-- Rempli dynamiquement par JS -->
-                        <span style="color: gray; font-style: italic; text-align: center;">Aucun salon sauvegardé</span>
+                        <span style="color: gray; font-style: italic; text-align: center;">Aucun salon enregistré</span>
                     </div>
                 </div>
 
                 <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 12px 0;">
 
-                <!-- Statuts Actuels -->
                 <div class="menu-status-bar" style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <span>SALON ACTUEL :</span>
+                        <span>VOTRE SALON :</span>
                         <strong id="menu-room-id">Chargement...</strong>
                     </div>
                     <button id="btn-save-current-room" class="btn-modal" style="margin: 0; padding: 4px 10px; font-size: 0.75rem; background: #f39c12; color: white;">⭐ Sauvegarder</button>
                 </div>
 
                 <div class="menu-status-bar" style="margin-top: 5px;">
-                    <span>VOTRE RÔLE :</span>
+                    <span>POSITION ASSIGNÉE :</span>
                     <strong id="menu-player-role" style="color: #e67e22;">Attribution...</strong>
                 </div>
 
-                <!-- Boutons Annexes -->
                 <div class="modal-grid-buttons" style="margin-top: 15px;">
                     <button class="btn-modal" id="btn-general-rules">Règles</button>
                     <button class="btn-modal" id="btn-prise">Prises</button>
-                    <button class="btn-modal" id="btn-menu-annuler" style="grid-column: span 2;">Fermer le menu</button>
+                    <button class="btn-modal" id="btn-menu-annuler" style="grid-column: span 2;">Fermer et Jouer</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- MODALE DES RÈGLES DE PRISES -->
     <div class="modal-overlay hidden" id="rules-modal">
         <div class="modal-card">
             <div class="modal-header">
@@ -170,8 +156,8 @@
                 <button class="close-btn" id="btn-close-rules">x</button>
             </div>
             <div class="modal-body scrollable">
-                <p>La capture s'effectue lorsque la dernière graine semée tombe dans une case du camp adverse et que cette case contient désormais un total de <strong>2, 3 ou 4 graines</strong>.</p>
-                <h3>Historique de la partie :</h3>
+                <p>La capture s'effectue lorsque la dernière graine semée tombe dans une case du camp adverse et contient 2, 3 ou 4 graines au total.</p>
+                <h3>Historique des coups distants :</h3>
                 <ul id="history-list" class="history-log"></ul>
             </div>
             <div class="modal-footer">
@@ -180,27 +166,24 @@
         </div>
     </div>
 
-    <!-- MODALE DES RÈGLES GÉNÉRALES -->
     <div class="modal-overlay hidden" id="general-rules-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h2>Comment jouer au Songo ?</h2>
+                <h2>Règles Générales</h2>
                 <button class="close-btn" id="btn-close-general-rules">x</button>
             </div>
             <div class="modal-body scrollable">
-                <p>Le Songo est un jeu traditionnel d'Afrique centrale appartenant à la famille des Mancalas.</p>
+                <p>Le Songo est composé de 2 rangées de 7 trous contenant 5 graines chacun.</p>
                 <ul>
-                    <li>Le plateau est composé de deux rangées de 7 trous. Chaque trou contient au départ 5 graines.</li>
-                    <li>À votre tour, sélectionnez l'un de vos trous contenant des graines. Celles-ci sont distribuées une par une dans les trous suivants.</li>
-                    <li>Il est interdit de déposer une graine dans le trou de départ si le tour de semaille fait un tour complet du plateau.</li>
+                    <li>Distribution à un trou d'intervalle dans le sens horaire.</li>
                 </ul>
             </div>
             <div class="modal-footer">
-                <button class="btn-modal btn-primary" id="btn-rules-back-to-menu">Retour au Menu</button>
+                <button class="btn-modal btn-primary" id="btn-rules-back-to-menu">Retour</button>
             </div>
         </div>
     </div>
 
-    <script type="module" src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

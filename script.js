@@ -1,8 +1,9 @@
-// --- CONFIGURATION DE L'API BASE DES SALONS (REST VIA AJAX) ---
-// Remplacer "VOTRE_PROJECT_ID" par l'ID réel de ton projet Firebase
+// --- LOGIQUE DE SYNCHRONISATION MULTIJOUEUR DISTANTE VIA AJAX ---
+
+// URL de l'API REST globale pour lier les deux joueurs distants
 const BASE_API_URL = "https://VOTRE_PROJECT_ID-default-rtdb.firebaseio.com/rooms";
 
-// --- INITIALISATION DU SALON ---
+// Analyse des paramètres de l'URL pour la gestion des invitations distantes
 const urlParams = new URLSearchParams(window.location.search);
 let roomId = urlParams.get('room');
 if (!roomId) {
@@ -10,11 +11,11 @@ if (!roomId) {
     window.history.pushState({}, '', `?room=${roomId}`);
 }
 
-// Variables d'état local
+// Données d'identification du joueur local
 let localRole = ""; 
 let localPlayerName = localStorage.getItem('songo_pseudo') || "Joueur_" + Math.floor(Math.random() * 99);
 
-// Variables du moteur de jeu synchronisées via AJAX
+// Variables synchronisées du Songo
 let board = [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5];
 let scores = [0, 0];
 let currentPlayer = "Sud";
@@ -23,35 +24,35 @@ let playersSync = { Sud: { name: "En attente...", status: "offline" }, Nord: { n
 
 const pitLabels = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "N1", "N2", "N3", "N4", "N5", "N6", "N7"];
 
-// Dom Elements
+// Liaisons DOM
 const menuModal = document.getElementById('menu-modal');
 const rulesModal = document.getElementById('rules-modal');
 const generalRulesModal = document.getElementById('general-rules-modal');
 const inputName = document.getElementById('input-player-name');
 inputName.value = localPlayerName;
 
-// --- FONCTIONS LOGIQUES AJAX (COMMUNICATION AVEC LE SERVEUR) ---
+// --- CRUCIAL : FONCTIONS REQUÊTES AJAX (FETCH ASYNC EXCLUSIF) ---
 
-// 1. Requête AJAX GET : Récupère l'état actuel du salon
+// Fonction AJAX principale : Va chercher les données de l'autre joueur sur le Cloud
 async function ajaxGetRoomData() {
     try {
         let response = await fetch(`${BASE_API_URL}/${roomId}.json`);
         let data = await response.json();
         
+        // Si le salon n'existe pas encore sur internet, le premier joueur le crée
         if (!data) {
-            // Si le salon n'existe pas côté serveur, on le crée via un PUT AJAX
             await ajaxPutInitialRoom(roomId, true);
             return;
         }
 
-        // Transfert des données reçues par AJAX dans nos variables
+        // Importation immédiate des variables de jeu distantes
         board = data.board || board;
         scores = data.scores || scores;
         currentPlayer = data.currentPlayer || currentPlayer;
         gameActive = data.gameActive !== undefined ? data.gameActive : gameActive;
         playersSync = data.players || playersSync;
 
-        // Détermination du rôle à la première connexion
+        // Logique d'attribution automatique des rôles distants (Sud ou Nord)
         if (!localRole) {
             if (!playersSync.Sud || playersSync.Sud.status === "offline" || playersSync.Sud.name === localPlayerName) {
                 localRole = "Sud";
@@ -75,18 +76,18 @@ async function ajaxGetRoomData() {
 
         updateUI();
     } catch (error) {
-        console.error("Erreur AJAX lors de la récupération :", error);
+        console.error("Échec de la requête AJAX de synchronisation :", error);
     }
 }
 
-// 2. Requête AJAX PUT : Initialise ou écrase un salon entier
+// Requête AJAX PUT : Écrit ou réinitialise un salon entier sur le réseau distant
 async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
-    const freshData = {
+    const initPayload = {
         board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "Partie lancée via requêtes AJAX !",
+        lastMoveLog: "Nouveau salon distant initialisé par AJAX.",
         players: {
             Sud: { name: assignLocal ? localPlayerName : "En attente...", status: assignLocal ? "online" : "offline" },
             Nord: { name: "En attente...", status: "offline" }
@@ -97,7 +98,7 @@ async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
         await fetch(`${BASE_API_URL}/${targetRoomId}.json`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(freshData)
+            body: JSON.stringify(initPayload)
         });
         if (assignLocal) {
             localRole = "Sud";
@@ -105,11 +106,11 @@ async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
             document.getElementById('menu-player-role').innerText = localRole;
         }
     } catch (error) {
-        console.error("Erreur AJAX PUT :", error);
+        console.error("Erreur AJAX PUT (Initialisation distante) :", error);
     }
 }
 
-// 3. Requête AJAX PATCH : Met à jour uniquement l'état du jeu après un coup
+// Requête AJAX PATCH : Transmet instantanément le coup qu'on vient de jouer sur le serveur distant
 async function ajaxPatchGameState(updatedFields) {
     try {
         await fetch(`${BASE_API_URL}/${roomId}.json`, {
@@ -118,37 +119,38 @@ async function ajaxPatchGameState(updatedFields) {
             body: JSON.stringify(updatedFields)
         });
     } catch (error) {
-        console.error("Erreur AJAX PATCH (State) :", error);
+        console.error("Erreur AJAX PATCH (Envoi du coup) :", error);
     }
 }
 
-// 4. Requête AJAX PATCH : Met à jour le pseudo/statut d'un joueur
+// Requête AJAX PATCH : Met à jour la présence internet des joueurs
 async function ajaxPatchPlayerStatus(role, name, status) {
     if (role !== "Sud" && role !== "Nord") return;
     try {
-        let pData = {};
-        pData[role] = { name: name, status: status };
+        let updateObject = {};
+        updateObject[role] = { name: name, status: status };
         await fetch(`${BASE_API_URL}/${roomId}/players.json`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(pData)
+            body: JSON.stringify(updateObject)
         });
     } catch (error) {
-        console.error("Erreur AJAX PATCH (Player) :", error);
+        console.error("Erreur AJAX PATCH (Statut joueur) :", error);
     }
 }
 
-// --- BOUCLE DE SYNCHRONISATION AJAX AUTOMATIQUE (POLLING) ---
-// Comme AJAX ne gère pas nativement le push en direct, on interroge le serveur toutes les 2 secondes
+// --- LE MOTEUR DU POLLING INTERNET ---
+// Pour que les deux joueurs distants voient les actions de l'autre, 
+// AJAX va interroger l'API toutes les 1000 millisecondes (1 seconde) de façon asynchrone.
 setInterval(() => {
     ajaxGetRoomData();
-}, 2000);
+}, 1000);
 
-// Lancement direct au chargement initial
+// Premier appel immédiat au chargement du site distant
 ajaxGetRoomData();
 
 
-// --- MOTEUR DE RENDU GRAPHIQUE ---
+// --- RENDER DU PLATEAU GRAPHIQUE DE SONGO ---
 function updateUI() {
     document.getElementById('menu-room-id').innerText = `#${roomId}`;
     document.getElementById('top-room-id').innerText = `#${roomId}`;
@@ -177,7 +179,7 @@ function updateUI() {
     } else if (currentPlayer === localRole) {
         document.getElementById('center-message').innerText = "À vous de jouer !";
     } else {
-        document.getElementById('center-message').innerText = `Attente de ${currentTurnName}...`;
+        document.getElementById('center-message').innerText = `Attente de l'adversaire (${currentTurnName})...`;
     }
 
     for(let idx = 0; idx < 14; idx++) {
@@ -204,11 +206,9 @@ function updateStatusBadge(id, pData) {
     const el = document.getElementById(id);
     if (!el) return;
     if (pData && pData.status === "online") {
-        el.innerText = "En ligne";
-        el.classList.add('online');
+        el.innerText = "En ligne"; el.classList.add('online');
     } else {
-        el.innerText = "Déconnecté";
-        el.classList.remove('online');
+        el.innerText = "Déconnecté"; el.classList.remove('online');
     }
 }
 
@@ -220,7 +220,7 @@ function renderGrenier(id, count) {
     }
 }
 
-// --- MECANIQUE DE SEMAILLE DU SONGO ---
+// --- LOGIQUE DÉCISIONNELLE DU SEMAILLE ---
 async function move(startIndex) {
     if (!gameActive) return;
     if (localRole === "Spectateur" || currentPlayer !== localRole) return;
@@ -248,22 +248,18 @@ async function move(startIndex) {
 
     const activeName = currentPlayer === "Sud" ? playersSync.Sud.name : playersSync.Nord.name;
     let nextPlayer = currentPlayer === "Sud" ? "Nord" : "Sud";
-    let logMsg = `${activeName} a joué ${pitLabels[startIndex]} (Prise : ${captured})`;
+    let logMsg = `${activeName} a joué la case ${pitLabels[startIndex]} (Prise : ${captured})`;
 
-    if (currentPlayer === "Sud") {
-        scores[0] += captured;
-    } else {
-        scores[1] += captured;
-    }
+    if (currentPlayer === "Sud") { scores[0] += captured; } else { scores[1] += captured; }
 
     let nextGameActive = true;
     if (scores[0] >= 40 || scores[1] >= 40 || board.reduce((a,b)=>a+b, 0) < 10) {
         nextGameActive = false;
         const winnerName = scores[0] >= 40 ? playersSync.Sud.name : (scores[1] >= 40 ? playersSync.Nord.name : "Égalité");
-        logMsg += ` - Partie Terminée ! Victoire de ${winnerName}`;
+        logMsg += ` - Victoire finale : ${winnerName}`;
     }
 
-    // Envoi synchrone du coup joué via AJAX PATCH
+    // Sauvegarde immédiate du coup sur internet via AJAX PATCH
     await ajaxPatchGameState({
         board: board,
         scores: scores,
@@ -285,7 +281,7 @@ function appendHistoryOnce(msg) {
     historyList.insertBefore(li, historyList.firstChild);
 }
 
-// --- INTERACTION DU MENU ET EVENEMENTS ---
+// --- GESTIONNAIRES D'ÉVÉNEMENTS ---
 document.getElementById('btn-open-menu').addEventListener('click', () => { renderSavedRooms(); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
@@ -309,15 +305,14 @@ inputName.addEventListener('change', () => {
     ajaxPatchPlayerStatus(localRole, localPlayerName, "online");
 });
 
-
-// --- RECHERCHE AJAX DE SALON UNIQUE ET CRÉATION DIRECTE ---
+// --- RECHERCHE ET CRÉATION DE SALONS DISTANTS VIA REQUÊTES AJAX RÉCURSIVES ---
 async function generateUniqueRoomIdViaAjax() {
     const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
     try {
         let response = await fetch(`${BASE_API_URL}/${candidateId}.json`);
         let data = await response.json();
         if (data !== null) {
-            // Si le salon existe déjà, on relance récursivement la recherche AJAX
+            // L'identifiant est déjà pris par deux autres joueurs distants, on relance la boucle AJAX
             return await generateUniqueRoomIdViaAjax();
         }
         return candidateId;
@@ -328,15 +323,13 @@ async function generateUniqueRoomIdViaAjax() {
 
 document.getElementById('btn-generate-room').addEventListener('click', async () => {
     const btn = document.getElementById('btn-generate-room');
-    btn.innerText = "⚡ Création via AJAX...";
+    btn.innerText = "⚡ Création du salon distant...";
     btn.disabled = true;
 
     let uniqueId = await generateUniqueRoomIdViaAjax();
-    
-    // Initialise le nouveau salon sur le serveur
     await ajaxPutInitialRoom(uniqueId, false);
     
-    // Ouvre immédiatement la page de jeu sur ce nouveau salon
+    // Ouvre instantanément le jeu de Songo sur le nouveau salon distant
     window.location.href = `index.html?room=${uniqueId}`;
 });
 
@@ -347,14 +340,13 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
     }
 });
 
-
-// --- GESTION DES SALONS SAUVEGARDÉS (LOCAL STORAGE) ---
+// --- PERSISTENCE LOCAL STORAGE DES SALONS ---
 document.getElementById('btn-save-current-room').addEventListener('click', () => {
     let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
     if (!saved.includes(roomId)) {
         saved.push(roomId);
         localStorage.setItem('songo_saved_rooms', JSON.stringify(saved));
-        alert(`Salon #${roomId} sauvegardé !`);
+        alert(`Salon distant #${roomId} ajouté à vos favoris !`);
         renderSavedRooms();
     }
 });
@@ -363,14 +355,14 @@ function renderSavedRooms() {
     const container = document.getElementById('saved-rooms-list');
     let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
     if (saved.length === 0) {
-        container.innerHTML = `<span style="color: gray; font-style: italic; text-align: center;">Aucun salon sauvegardé</span>`;
+        container.innerHTML = `<span style="color: gray; font-style: italic; text-align: center;">Aucun salon enregistré</span>`;
         return;
     }
     container.innerHTML = "";
     saved.forEach(id => {
         const row = document.createElement('div');
-        row.style = "display:flex; justify-content:space-between; padding:4px; background:rgba(255,255,255,0.7); margin-bottom:2px; border-radius:4px;";
-        row.innerHTML = `<span style="cursor:pointer; font-weight:bold;">Salon #${id}</span><span style="cursor:pointer;">❌</span>`;
+        row.style = "display:flex; justify-content:space-between; padding:5px; background:rgba(255,255,255,0.8); margin-bottom:3px; border-radius:4px; border: 1px solid var(--border-btn);";
+        row.innerHTML = `<span style="cursor:pointer; font-weight:bold; flex:1;">Salon #${id}</span><span style="cursor:pointer;">❌</span>`;
         
         row.firstChild.addEventListener('click', () => { window.location.href = `index.html?room=${id}`; });
         row.lastChild.addEventListener('click', (e) => {
@@ -383,3 +375,10 @@ function renderSavedRooms() {
     });
 }
 renderSavedRooms();
+
+// Notification de déconnexion réseau lors de la fermeture de la page web
+window.addEventListener('beforeunload', () => {
+    if (localRole === "Sud" || localRole === "Nord") {
+        ajaxPatchPlayerStatus(localRole, localPlayerName, "offline");
+    }
+});
