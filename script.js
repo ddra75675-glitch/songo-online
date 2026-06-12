@@ -1,25 +1,20 @@
 // =========================================================================
-//  SONGO ONLINE - ARCHITECTURE COMPLÈTE (AJAX, RÔLES & THEMES)
+//  SONGO ONLINE - ENTRÉE STRICTE PAR CODE UNIQUE GÉNÉRÉ PAR L'APP
 // =========================================================================
 
 // CONFIGURATION : Remplacez par l'URL réelle de votre Realtime Database Firebase
 const BASE_API_URL = "https://VOTRE_PROJECT_ID-default-rtdb.firebaseio.com/rooms";
 
-// 1. ANALYSE ET GESTION DU SALON DANS L'URL
+// 1. L'APP ANALYSE L'URL À LA RECHERCHE D'UN CODE DE SALON
 const urlParams = new URLSearchParams(window.location.search);
-let roomId = urlParams.get('room');
-
-if (!roomId) {
-    roomId = Math.floor(1000 + Math.random() * 9000).toString();
-    window.history.pushState({}, '', `?room=${roomId}`);
-}
+let roomId = urlParams.get('room'); 
 
 // 2. ÉTAT DU JOUEUR LOCAL ET DU JEU
-let localRole = ""; // Dynamique : "Sud", "Nord" ou "Spectateur"
+let localRole = ""; 
 let localPlayerName = localStorage.getItem('songo_pseudo') || "Joueur_" + Math.floor(Math.random() * 99);
 
 let board = [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5];
-let scores = [0, 0]; // [0] = Sud, [1] = Nord
+let scores = [0, 0]; 
 let currentPlayer = "Sud";
 let gameActive = true;
 let playersSync = { 
@@ -37,13 +32,29 @@ const inputName = document.getElementById('input-player-name');
 inputName.value = localPlayerName;
 
 // =========================================================================
-//  SECTION INTERNET : SYNCHRONISATION VIA FLUX REST AJAX
+//  CONTRÔLE DE SÉCURITÉ : ENTRÉE PAR CODE OBLIGATOIRE
 // =========================================================================
 
-/**
- * Récupère en continu l'état du salon sur le serveur
- */
+// Au démarrage, si l'URL ne contient aucun code généré au préalable...
+if (!roomId) {
+    // 🚩 L'application bloque l'accès au plateau de jeu.
+    // Elle force l'ouverture du menu et masque les boutons de fermeture.
+    menuModal.classList.remove('hidden');
+    document.getElementById('btn-close-menu').style.display = "none";
+    document.getElementById('btn-menu-annuler').style.display = "none";
+    document.getElementById('center-message').innerText = "Générez un salon pour obtenir un code et débuter le jeu.";
+} else {
+    // Si un code valide généré par l'app est présent dans l'URL, le jeu se synchronise en continu
+    setInterval(ajaxGetRoomData, 1000);
+    ajaxGetRoomData();
+}
+
+// =========================================================================
+//  SECTION INTERNET : SYNCHRONISATION VIA REST AJAX
+// =========================================================================
+
 async function ajaxGetRoomData() {
+    if (!roomId) return;
     try {
         let response = await fetch(`${BASE_API_URL}/${roomId}.json`);
         let data = await response.json();
@@ -59,7 +70,7 @@ async function ajaxGetRoomData() {
         gameActive = data.gameActive !== undefined ? data.gameActive : gameActive;
         playersSync = data.players || {};
 
-        // --- ALGORITHME D'ATTRIBUTION UNIQUE DES RÔLES (MAX 2 JOUEURS) ---
+        // ALGORITHME D'ATTRIBUTION UNIQUE DES RÔLES (MAX 2 JOUEURS)
         if (!localRole) {
             if (!playersSync.Sud || playersSync.Sud.status === "offline" || playersSync.Sud.name === localPlayerName) {
                 localRole = "Sud";
@@ -90,16 +101,13 @@ async function ajaxGetRoomData() {
     }
 }
 
-/**
- * Crée un salon vide ou écrase l'ancien lors d'une réinitialisation
- */
 async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
     const initPayload = {
         board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "Le jeu commence ! Bonne chance.",
+        lastMoveLog: "Bienvenue dans ce nouveau salon ! Le jeu commence.",
         players: {
             Sud: { name: assignLocal ? localPlayerName : "En attente...", status: assignLocal ? "online" : "offline" },
             Nord: { name: "En attente...", status: "offline" }
@@ -118,7 +126,7 @@ async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
             document.getElementById('menu-player-role').innerText = localRole;
         }
     } catch (error) {
-        console.error("Erreur lors du PUT initial :", error);
+        console.error("Erreur lors de l'initialisation du salon :", error);
     }
 }
 
@@ -130,7 +138,7 @@ async function ajaxPatchGameState(updatedFields) {
             body: JSON.stringify(updatedFields)
         });
     } catch (error) {
-        console.error("Erreur d'envoi du coup :", error);
+        console.error("Erreur de transmission du coup :", error);
     }
 }
 
@@ -145,25 +153,19 @@ async function ajaxPatchPlayerStatus(role, name, status) {
             body: JSON.stringify(updateObject)
         });
     } catch (error) {
-        console.error("Erreur statut joueur :", error);
+        console.error("Erreur de statut joueur :", error);
     }
 }
 
-// Polling synchronisé toutes les 1000ms
-setInterval(ajaxGetRoomData, 1000);
-ajaxGetRoomData();
-
-
 // =========================================================================
-//  SECTION JEU : DÉROULEMENT DES TOURS & SEMAILLES
+//  SECTION JEU : COMPORTEMENT DU PLATEAU DE SONGO
 // =========================================================================
 
 async function move(startIndex) {
-    if (!gameActive) return;
+    if (!roomId || !gameActive) return; 
     
-    // Sécurité stricte : Les spectateurs et joueurs hors-tour sont bloqués
     if (localRole === "Spectateur") {
-        alert("Action interdite : Vous êtes spectateur.");
+        alert("Action impossible : Vous êtes en mode spectateur.");
         return;
     }
     if (currentPlayer !== localRole) return;
@@ -214,7 +216,7 @@ async function move(startIndex) {
 }
 
 // =========================================================================
-//  SECTION RENDU : AFFICHAGE DYNAMIQUE DU BOARD ET DES GRAINES
+//  SECTION RENDU GRAPHIQUE
 // =========================================================================
 
 function updateUI() {
@@ -298,35 +300,49 @@ function appendHistoryOnce(msg) {
 }
 
 // =========================================================================
-//  SECTION LOGIQUE ET RECHERCHE DE SALONS AUTO UNIQUES VIA RECURSION AJAX
+//  CŒUR DE L'APPLICATION : GÉNÉRATION DU CODE UNIQUE DE SALON (ANTI-DUPLICATION)
 // =========================================================================
 
+/**
+ * Fonction Récursive : L'application teste elle-même sur le serveur si le code 
+ * aléatoire généré est disponible ou s'il appartient déjà à un autre salon actif.
+ */
 async function generateUniqueRoomIdViaAjax() {
+    // Génère un nombre aléatoire strict entre 1000 et 9999
     const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
     try {
         let response = await fetch(`${BASE_API_URL}/${candidateId}.json`);
         let data = await response.json();
+        
+        // Si le serveur répond avec des données, le code est déjà pris !
+        // L'application s'auto-rappelle pour fabriquer un nouveau code libre.
         if (data !== null) {
-            return await generateUniqueRoomIdViaAjax();
+            return await generateUniqueRoomIdViaAjax(); 
         }
-        return candidateId;
+        return candidateId; // Le code est vierge, unique et validé !
     } catch (e) {
         return candidateId;
     }
 }
 
+// Clic sur "Créer un nouveau salon" : L'application génère l'identifiant unique
 document.getElementById('btn-generate-room').addEventListener('click', async () => {
     const btn = document.getElementById('btn-generate-room');
-    btn.innerText = "⚡ Recherche d'un salon...";
+    btn.innerText = "⚡ Génération du code unique...";
     btn.disabled = true;
 
+    // L'app trouve un code libre (ex: 8361)
     let uniqueId = await generateUniqueRoomIdViaAjax();
-    btn.innerText = "🛠️ Création...";
+    btn.innerText = "🛠️ Configuration du salon...";
     
+    // L'app installe le jeu sur le serveur pour ce code précis
     await ajaxPutInitialRoom(uniqueId, true);
+    
+    // L'app injecte le code généré dans l'URL et actualise la page pour lancer la partie
     window.location.href = `index.html?room=${uniqueId}`;
 });
 
+// Clic : Permet à un ami d'entrer le code à 4 chiffres généré par l'app du premier joueur
 document.getElementById('btn-join-room').addEventListener('click', () => {
     const inputRoom = document.getElementById('input-join-room').value.trim();
     if (inputRoom.length === 4) {
@@ -334,10 +350,10 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
     }
 });
 
-// RECOMMENCER : Forçage asynchrone instantané du rafraîchissement
 document.getElementById('btn-reset').addEventListener('click', async () => {
+    if (!roomId) return;
     const btnReset = document.getElementById('btn-reset');
-    btnReset.innerText = "🔄 Reset distant...";
+    btnReset.innerText = "🔄 Réinitialisation...";
     btnReset.disabled = true;
 
     await ajaxPutInitialRoom(roomId, false); 
@@ -357,7 +373,7 @@ inputName.addEventListener('change', () => {
 });
 
 // =========================================================================
-//  SECTION THEME : COMMUTATEUR MODE CLAIR / SOMBRES (THEME SWITCHER)
+//  SECTION THEME : GESTION DES COULEURS
 // =========================================================================
 
 const savedTheme = localStorage.getItem('songo_theme') || 'light';
@@ -383,14 +399,22 @@ function updateThemeButtonIcon(theme) {
 }
 
 // =========================================================================
-//  SECTION MODALS & HISTORIQUE LOCAL
+//  SECTION MODALS INTERACTIFS
 // =========================================================================
 
-document.getElementById('btn-open-menu').addEventListener('click', () => { renderSavedRooms(); menuModal.classList.remove('hidden'); });
-document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
-document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
+document.getElementById('btn-open-menu').addEventListener('click', () => { 
+    if (roomId) {
+        document.getElementById('btn-close-menu').style.display = "block";
+        document.getElementById('btn-menu-annuler').style.display = "block";
+    }
+    renderSavedRooms(); 
+    menuModal.classList.remove('hidden'); 
+});
 
-document.getElementById('btn-prise').addEventListener('click', () => { menuModal.classList.add('hidden'); rulesModal.classList.remove('hidden'); });
+document.getElementById('btn-close-menu').addEventListener('click', () => { if(roomId) menuModal.classList.add('hidden'); });
+document.getElementById('btn-menu-annuler').addEventListener('click', () => { if(roomId) menuModal.classList.add('hidden'); });
+
+document.getElementById('btn-type-prise' || 'btn-prise').addEventListener('click', () => { menuModal.classList.add('hidden'); rulesModal.classList.remove('hidden'); });
 document.getElementById('btn-close-rules').addEventListener('click', () => { rulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-back-to-menu').addEventListener('click', () => { rulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 
@@ -403,11 +427,12 @@ document.querySelectorAll('.pit').forEach(p => {
 });
 
 document.getElementById('btn-save-current-room').addEventListener('click', () => {
+    if(!roomId) return;
     let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
     if (!saved.includes(roomId)) {
         saved.push(roomId);
         localStorage.setItem('songo_saved_rooms', JSON.stringify(saved));
-        alert(`Salon distant #${roomId} sauvegardé !`);
+        alert(`Code #${roomId} mémorisé !`);
         renderSavedRooms();
     }
 });
