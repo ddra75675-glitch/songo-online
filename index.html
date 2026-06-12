@@ -3,188 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Songo Pro - Multijoueur à Distance</title>
+    <title>Songo Multijoueur en Ligne</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="landscape-warning">
-    <div class="warning-box">
-        <div class="phone-icon">🔄</div>
-        <h2>Veuillez tourner votre appareil</h2>
-        <p>Le jeu Songo nécessite une orientation en mode paysage.</p>
-    </div>
-</div>
-
-<div class="modal-overlay hidden" id="general-rules-modal">
-    <div class="modal-card rules-card">
-        <div class="modal-header">
-            <h2>Règles Générales</h2>
-            <button class="close-btn" id="btn-close-general-rules">x</button>
+    <!-- BARRE DE STATUT SUPÉRIEURE -->
+    <header class="game-header">
+        <div class="header-left">
+            <button class="btn-icon" id="btn-open-menu">⚙️ Menu</button>
+            <div class="room-badge">Salon : <span id="top-room-id">#0000</span></div>
         </div>
-        <div class="modal-body rules-body">
-            <div class="rules-section">
-                <h3>Mise en place & But</h3>
-                <ul>
-                    <li><strong>Départ :</strong> 2 joueurs, 7 cases chacun, 5 graines par case (70 graines au total).</li>
-                    <li><strong>But :</strong> Récolter au moins 40 graines dans le camp adverse.</li>
-                </ul>
-            </div>
-            <button class="btn-modal btn-primary" id="btn-rules-back-to-menu" style="width:100%; margin-top:15px;">Retour au Menu</button>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay hidden" id="rules-modal">
-    <div class="modal-card rules-card">
-        <div class="modal-header">
-            <h2>Règles de Prise</h2>
-            <button class="close-btn" id="btn-close-rules">x</button>
-        </div>
-        <div class="modal-body rules-body">
-            <div class="rules-section">
-                <h3>Conditions</h3>
-                <ul>
-                    <li>Dernière graine chez l'adversaire.</li>
-                    <li>La case finale doit contenir 2, 3 ou 4 graines après semaille.</li>
-                </ul>
-            </div>
-            <button class="btn-modal btn-primary" id="btn-back-to-menu" style="width:100%; margin-top:15px;">Retour au Menu</button>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="menu-modal">
-    <div class="modal-card">
-        <div class="modal-header">
-            <h2>Songo En Ligne</h2>
-            <button class="close-btn" id="btn-close-menu">x</button>
-        </div>
-
-        <div class="modal-body">
-            <div class="modal-grid-buttons">
-                <button class="btn-modal" id="btn-general-rules">Règles</button>
-                <button class="btn-modal" id="btn-prise">Prises</button>
-                <button class="btn-modal" id="btn-menu-annuler">Retour</button>
-                <button class="btn-modal btn-primary" id="btn-menu-nouvelle-partie">Créer/Reset Salon</button>
-            </div>
-
-            <div class="menu-status-bar">
-                <span>SALON ID :</span>
-                <strong id="menu-room-id">Chargement...</strong>
-            </div>
-
-            <div class="menu-status-bar">
-                <span>VOTRE RÔLE :</span>
-                <strong id="menu-player-role" style="color: #e67e22;">Attribution...</strong>
-            </div>
-
-            <div class="config-group">
-                <label for="input-player-name">VOTRE PSEUDO</label>
-                <input type="text" id="input-player-name" value="Joueur" class="input-text-songo" maxlength="12">
-            </div>
-
-            <div class="mode-description-box">
-                <p id="mode-status-text">Partagez l'URL de votre navigateur avec un ami pour jouer ensemble à distance !</p>
+        <div class="header-center">
+            <div class="turn-indicator">
+                <span class="pulse-icon">⏳</span> <span id="current-turn-val">Chargement...</span>
             </div>
         </div>
-    </div>
-</div>
+        <div class="header-right">
+            <div class="role-badge">Votre rôle : <span id="local-role-val">...</span></div>
+            <button class="btn-icon" id="btn-theme">🌙 Sombre</button>
+        </div>
+    </header>
 
-<div class="container main-game-layout">
-    
-    <div class="sidebar">
-        <h2 id="title-side-nord">Nord</h2>
-        <div class="badge-connect" id="status-nord">Déconnecté</div>
-        <div class="score-huge" id="huge-score-nord">0</div>
-        <div class="label-grain">Graines</div>
-    </div>
-
-    <div class="main-content">
+    <!-- ZONE DE JEU PRINCIPALE -->
+    <main class="game-container">
         
-        <div class="top-navbar">
-            <div class="status-card">
-                <span class="label">Salon</span>
-                <span class="value" id="top-room-id" style="color: var(--accent-green);">#0000</span>
+        <!-- CÔTÉ NORD (ADVERSAIRE) -->
+        <section class="player-side nord-side">
+            <div class="side-info">
+                <h2 class="player-name" id="title-side-nord">Nord</h2>
+                <span class="status-dot" id="status-nord">Déconnecté</span>
+                <div class="score-display">Score : <span id="huge-score-nord">0</span></div>
             </div>
-            <div class="btn-group">
-                <button class="btn" id="btn-open-menu">☰ Configuration</button>
-                <button class="btn" id="btn-theme">🌙 Sombre</button>
-                <button class="btn" id="btn-reset">🔄 Reset</button>
-            </div>
-            <div class="status-card">
-                <span class="label">Tour De</span>
-                <span class="value" id="current-turn-val">Sud</span>
-            </div>
-            <div class="status-card">
-                <span class="label">Rôle Local</span>
-                <span class="value" id="local-role-val" style="color:#e67e22;">-</span>
-            </div>
-        </div>
 
-        <div class="songo-board-wrapper">
-            <div class="board-grid">
-                
-                <div class="grenier" id="grenier-nord">
-                    <div class="grenier-badge" id="badge-g-nord">0</div>
-                    <div class="grenier-seeds" id="seeds-g-nord"></div>
+            <div class="board-row row-nord">
+                <!-- Grenier Nord au bout à gauche (indices de 13 à 7 de gauche à droite pour le joueur) -->
+                <div class="grenier-box" id="grenier-nord">
+                    <span class="badge-grenier" id="badge-g-nord">0</span>
+                    <div class="seeds-area-grenier" id="seeds-g-nord"></div>
                 </div>
 
                 <div class="pits-container">
-                    <div class="center-indicator" id="center-message">Initialisation...</div>
-                    
-                    <div class="row" id="row-nord">
-                        <div class="pit" data-index="7"><span class="pit-label-top" id="lbl-7">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N1</span></div>
-                        <div class="pit" data-index="8"><span class="pit-label-top" id="lbl-8">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N2</span></div>
-                        <div class="pit" data-index="9"><span class="pit-label-top" id="lbl-9">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N3</span></div>
-                        <div class="pit" data-index="10"><span class="pit-label-top" id="lbl-10">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N4</span></div>
-                        <div class="pit" data-index="11"><span class="pit-label-top" id="lbl-11">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N5</span></div>
-                        <div class="pit" data-index="12"><span class="pit-label-top" id="lbl-12">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N6</span></div>
-                        <div class="pit" data-index="13"><span class="pit-label-top" id="lbl-13">5</span><div class="seeds-area"></div><span class="pit-label-bottom">N7</span></div>
-                    </div>
+                    <div class="pit" data-index="13"><span class="pit-label">N7</span><div class="seeds-area"></div><span class="pit-count" id="lbl-13">5</span></div>
+                    <div class="pit" data-index="12"><span class="pit-label">N6</span><div class="seeds-area"></div><span class="pit-count" id="lbl-12">5</span></div>
+                    <div class="pit" data-index="11"><span class="pit-label">N5</span><div class="seeds-area"></div><span class="pit-count" id="lbl-11">5</span></div>
+                    <div class="pit" data-index="10"><span class="pit-label">N4</span><div class="seeds-area"></div><span class="pit-count" id="lbl-10">5</span></div>
+                    <div class="pit" data-index="9"><span class="pit-label">N3</span><div class="seeds-area"></div><span class="pit-count" id="lbl-9">5</span></div>
+                    <div class="pit" data-index="8"><span class="pit-label">N2</span><div class="seeds-area"></div><span class="pit-count" id="lbl-8">5</span></div>
+                    <div class="pit" data-index="7"><span class="pit-label">N1</span><div class="seeds-area"></div><span class="pit-count" id="lbl-7">5</span></div>
+                </div>
+            </div>
+        </section>
 
-                    <div class="row" id="row-sud">
-                        <div class="pit" data-index="0"><span class="pit-label-top" id="lbl-0">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S7</span></div>
-                        <div class="pit" data-index="1"><span class="pit-label-top" id="lbl-1">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S6</span></div>
-                        <div class="pit" data-index="2"><span class="pit-label-top" id="lbl-2">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S5</span></div>
-                        <div class="pit" data-index="3"><span class="pit-label-top" id="lbl-3">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S4</span></div>
-                        <div class="pit" data-index="4"><span class="pit-label-top" id="lbl-4">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S3</span></div>
-                        <div class="pit" data-index="5"><span class="pit-label-top" id="lbl-5">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S2</span></div>
-                        <div class="pit" data-index="6"><span class="pit-label-top" id="lbl-6">5</span><div class="seeds-area"></div><span class="pit-label-bottom">S1</span></div>
+        <!-- BANDEAU CENTRAL MESSAGES -->
+        <div class="center-status-bar">
+            <div id="center-message">Initialisation du plateau...</div>
+        </div>
+
+        <!-- CÔTÉ SUD (JOUEUR LOCAL) -->
+        <section class="player-side sud-side">
+            <div class="board-row row-sud">
+                <div class="pits-container">
+                    <div class="pit" data-index="0"><span class="pit-label">S1</span><div class="seeds-area"></div><span class="pit-count" id="lbl-0">5</span></div>
+                    <div class="pit" data-index="1"><span class="pit-label">S2</span><div class="seeds-area"></div><span class="pit-count" id="lbl-1">5</span></div>
+                    <div class="pit" data-index="2"><span class="pit-label">S3</span><div class="seeds-area"></div><span class="pit-count" id="lbl-2">5</span></div>
+                    <div class="pit" data-index="3"><span class="pit-label">S4</span><div class="seeds-area"></div><span class="pit-count" id="lbl-3">5</span></div>
+                    <div class="pit" data-index="4"><span class="pit-label">S5</span><div class="seeds-area"></div><span class="pit-count" id="lbl-4">5</span></div>
+                    <div class="pit" data-index="5"><span class="pit-label">S6</span><div class="seeds-area"></div><span class="pit-count" id="lbl-5">5</span></div>
+                    <div class="pit" data-index="6"><span class="pit-label">S7</span><div class="seeds-area"></div><span class="pit-count" id="lbl-6">5</span></div>
+                </div>
+
+                <!-- Grenier Sud au bout à droite -->
+                <div class="grenier-box" id="grenier-sud">
+                    <span class="badge-grenier" id="badge-g-sud">0</span>
+                    <div class="seeds-area-grenier" id="seeds-g-sud"></div>
+                </div>
+            </div>
+
+            <div class="side-info">
+                <h2 class="player-name" id="title-side-sud">Sud</h2>
+                <span class="status-dot" id="status-sud">Déconnecté</span>
+                <div class="score-display">Score : <span id="huge-score-sud">0</span></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- FOOTER : HISTORIQUE ET ACTIONS TECHNIQUES -->
+    <footer class="game-footer">
+        <div class="log-box">
+            <span class="log-title">Dernier coup :</span>
+            <span id="last-move-txt">Aucun coup joué pour le moment.</span>
+        </div>
+        <div class="footer-actions">
+            <button class="btn-danger" id="btn-reset">Recommencer</button>
+        </div>
+    </footer>
+
+    <!-- PAGE D'ACCUEIL / MENU MULTIJOUEUR AVEC CHOIX DE SALON -->
+    <div class="modal-overlay" id="menu-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Songo En Ligne</h2>
+                <button class="close-btn" id="btn-close-menu">x</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Configuration du Pseudo -->
+                <div class="config-group" style="margin-bottom: 15px;">
+                    <label for="input-player-name">VOTRE PSEUDO</label>
+                    <input type="text" id="input-player-name" value="Joueur" class="input-text-songo" maxlength="12">
+                </div>
+
+                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 15px 0;">
+
+                <!-- GESTION DES SALONS -->
+                <div class="config-group">
+                    <label>REJOINDRE UN SALON EXISTANT</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" id="input-join-room" placeholder="Ex: 4872" class="input-text-songo" style="flex: 1;" oninput="if(this.value.length > 4) this.value = this.value.slice(0,4);">
+                        <button class="btn-modal btn-primary" id="btn-join-room" style="padding: 0 15px; margin: 0; font-size: 0.85rem;">Rejoindre</button>
                     </div>
                 </div>
 
-                <div class="grenier" id="grenier-sud">
-                    <div class="grenier-badge" id="badge-g-sud">0</div>
-                    <div class="grenier-seeds" id="seeds-g-sud"></div>
+                <div style="margin-bottom: 15px;">
+                    <button class="btn-modal" id="btn-generate-room" style="width: 100%; font-size: 0.85rem; background: var(--bg-cream);">🎲 Générer un nouveau salon</button>
                 </div>
 
+                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 15px 0;">
+
+                <!-- Statuts Actuels -->
+                <div class="menu-status-bar">
+                    <span>SALON ACTUEL :</span>
+                    <strong id="menu-room-id">Chargement...</strong>
+                </div>
+
+                <div class="menu-status-bar">
+                    <span>VOTRE RÔLE :</span>
+                    <strong id="menu-player-role" style="color: #e67e22;">Attribution...</strong>
+                </div>
+
+                <!-- Boutons Annexes -->
+                <div class="modal-grid-buttons" style="margin-top: 15px;">
+                    <button class="btn-modal" id="btn-general-rules">Règles</button>
+                    <button class="btn-modal" id="btn-prise">Prises</button>
+                    <button class="btn-modal" id="btn-menu-annuler" style="grid-column: span 2;">Fermer le menu</button>
+                </div>
             </div>
         </div>
+    </div>
 
-        <div class="bottom-area">
-            <div class="bottom-card">
-                <h3>Dernier coup synchro</h3>
-                <div class="content" id="last-move-txt">Aucun coup joué.</div>
+    <!-- MODALE DES RÈGLES DE PRISES -->
+    <div class="modal-overlay hidden" id="rules-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Règles de capture au Songo</h2>
+                <button class="close-btn" id="btn-close-rules">x</button>
             </div>
-            <div class="bottom-card">
-                <h3>Fils d'actualité du salon</h3>
-                <ul class="history-log" id="history-list"></ul>
+            <div class="modal-body scrollable">
+                <p>La capture s'effectue lorsque la dernière graine semée tombe dans une case du camp adverse et que cette case contient désormais un total de <strong>2, 3 ou 4 graines</strong>.</p>
+                <h3>Historique de la partie :</h3>
+                <ul id="history-list" class="history-log"></ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal btn-primary" id="btn-back-to-menu">Retour</button>
             </div>
         </div>
-
     </div>
 
-    <div class="sidebar">
-        <h2 id="title-side-sud">Sud</h2>
-        <div class="badge-camp">Sud</div>
-        <div class="badge-connect" id="status-sud">Déconnecté</div>
-        <div class="score-huge" id="huge-score-sud">0</div>
-        <div class="label-grain">Graines</div>
+    <!-- MODALE DES RÈGLES GÉNÉRALES -->
+    <div class="modal-overlay hidden" id="general-rules-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Comment jouer au Songo ?</h2>
+                <button class="close-btn" id="btn-close-general-rules">x</button>
+            </div>
+            <div class="modal-body scrollable">
+                <p>Le Songo est un jeu de société traditionnel d'Afrique centrale appartenant à la famille des Mancalas.</p>
+                <ul>
+                    <li>Le plateau est composé de deux rangées de 7 trous. Chaque trou contient au départ 5 graines.</li>
+                    <li>À votre tour, sélectionnez l'un de vos trous contenant des graines. Celles-ci sont ramassées et semées une par une dans les trous suivants dans le sens horaire.</li>
+                    <li>Il est interdit de déposer une graine dans le trou de départ si le tour de semaille fait un tour complet complet du plateau.</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal btn-primary" id="btn-rules-back-to-menu">Retour au Menu</button>
+            </div>
+        </div>
     </div>
 
-</div>
-
-<script type="module" src="script.js"></script>
+    <!-- INCLUSION DU COMPOSANT SCRIPT SÉCURISÉ EN TANT QUE MODULE -->
+    <script type="module" src="script.js"></script>
 </body>
 </html>

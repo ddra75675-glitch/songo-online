@@ -17,11 +17,10 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // --- GESTION DU SALON MULTIJOUEUR ---
-// Recherche ou assignation automatique d'une Room ID via l'URL (?room=XXXX)
 const urlParams = new URLSearchParams(window.location.search);
 let roomId = urlParams.get('room');
 if (!roomId) {
-    roomId = Math.floor(1000 + Math.random() * 9000).toString(); // Salon aléatoire à 4 chiffres
+    roomId = Math.floor(1000 + Math.random() * 9000).toString(); // Salon aléatoire à 4 chiffres par défaut
     window.history.pushState({}, '', `?room=${roomId}`);
 }
 
@@ -39,7 +38,7 @@ let currentPlayer = "Sud";
 let gameActive = true;
 let playersSync = { Sud: { name: "En attente...", status: "offline" }, Nord: { name: "En attente...", status: "offline" } };
 
-const pitLabels = ["S7", "S6", "S5", "S4", "S3", "S2", "S1", "N1", "N2", "N3", "N4", "N5", "N6", "N7"];
+const pitLabels = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "N1", "N2", "N3", "N4", "N5", "N6", "N7"];
 
 // --- INITIALISATION DES ANCHORS MODALES ---
 const menuModal = document.getElementById('menu-modal');
@@ -131,10 +130,11 @@ function updateUI() {
     document.getElementById('menu-room-id').innerText = `#${roomId}`;
     document.getElementById('top-room-id').innerText = `#${roomId}`;
 
-    // Mise à jour des noms issus de la base Firebase
+    // Récupération dynamique des vrais pseudos depuis Firebase
     const nameSud = playersSync.Sud ? playersSync.Sud.name : "En attente...";
     const nameNord = playersSync.Nord ? playersSync.Nord.name : "En attente...";
 
+    // Remplacement des titres fixes "Sud" et "Nord" par les pseudos
     document.getElementById('title-side-sud').innerText = nameSud;
     document.getElementById('title-side-nord').innerText = nameNord;
 
@@ -148,22 +148,19 @@ function updateUI() {
     document.getElementById('badge-g-sud').innerText = scores[0];
     document.getElementById('badge-g-nord').innerText = scores[1];
 
+    // Attribution dynamique du nom de celui qui doit jouer
     const currentTurnName = currentPlayer === "Sud" ? nameSud : nameNord;
     document.getElementById('current-turn-val').innerText = currentTurnName;
 
-    // Message d'action central contextuel
+    // Message d'action central contextuel avec pseudos
     if (!gameActive) {
         document.getElementById('center-message').innerText = "Partie terminée !";
-        document.getElementById('game-state-val').innerText = "Terminé";
     } else if (localRole === "Spectateur") {
         document.getElementById('center-message').innerText = `Tour de : ${currentTurnName}`;
-        document.getElementById('game-state-val').innerText = "Spectateur";
     } else if (currentPlayer === localRole) {
         document.getElementById('center-message').innerText = "À vous de jouer !";
-        document.getElementById('game-state-val').innerText = "Votre tour";
     } else {
         document.getElementById('center-message').innerText = `Attente de ${currentTurnName}...`;
-        document.getElementById('game-state-val').innerText = "Attente adversaire";
     }
 
     // Graines dans les trous
@@ -210,7 +207,6 @@ function renderGrenier(id, count) {
 // --- LOGIQUE DU COUP SEMAILLE & INTEGRATION RESEAU ---
 function move(startIndex) {
     if (!gameActive) return;
-    // Blocage si ce n'est pas le tour du joueur local ou s'il est spectateur
     if (localRole === "Spectateur" || currentPlayer !== localRole) return;
     if (currentPlayer === "Sud" && (startIndex < 0 || startIndex > 6)) return;
     if (currentPlayer === "Nord" && (startIndex < 7 || startIndex > 13)) return;
@@ -234,6 +230,7 @@ function move(startIndex) {
         board[currentIndex] = 0;
     }
 
+    // Identification du nom actif pour l'historique
     const activeName = currentPlayer === "Sud" ? playersSync.Sud.name : playersSync.Nord.name;
     let nextPlayer = currentPlayer === "Sud" ? "Nord" : "Sud";
     let logMsg = `${activeName} a joué ${pitLabels[startIndex]} (Prise : ${captured})`;
@@ -244,14 +241,15 @@ function move(startIndex) {
         scores[1] += captured;
     }
 
-    // Vérification fin de partie locale
+    // Vérification fin de partie
     let nextGameActive = true;
     if (scores[0] >= 40 || scores[1] >= 40 || board.reduce((a,b)=>a+b, 0) < 10) {
         nextGameActive = false;
-        logMsg += " - Partie Terminée !";
+        const winnerName = scores[0] >= 40 ? playersSync.Sud.name : (scores[1] >= 40 ? playersSync.Nord.name : "Égalité");
+        logMsg += ` - Partie Terminée ! Victoire de ${winnerName}`;
     }
 
-    // EXPÉDITION DU NOUVEL ÉTAT VERS LA CONFIGURATION FIREBASE
+    // EXPÉDITION DU NOUVEL ÉTAT VERS FIREBASE
     update(roomRef, {
         board: board,
         scores: scores,
@@ -277,7 +275,7 @@ function resetGameOnline() {
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "Le plateau a été réinitialisé par un joueur."
+        lastMoveLog: "Le plateau a été réinitialisé."
     });
     document.getElementById('history-list').innerHTML = '';
 }
@@ -286,7 +284,7 @@ function resetGameOnline() {
 document.getElementById('btn-open-menu').addEventListener('click', () => menuModal.classList.remove('hidden'));
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
-document.getElementById('btn-menu-nouvelle-partie').addEventListener('click', () => {
+document.getElementById('btn-menu-nouvelle-partie')?.addEventListener('click', () => {
     menuModal.classList.add('hidden');
     resetGameOnline();
 });
@@ -316,6 +314,24 @@ document.querySelectorAll('.pit').forEach(p => {
     p.addEventListener('click', () => move(parseInt(p.getAttribute('data-index'))));
 });
 document.getElementById('btn-reset').addEventListener('click', resetGameOnline);
+
+// --- NOUVELLE LOGIQUE : AIGUILLAGE ET GESTION DES SALONS À LA DEMANDE ---
+
+// Bouton : Générer un nouveau salon aléatoire
+document.getElementById('btn-generate-room').addEventListener('click', () => {
+    const newRoomId = Math.floor(1000 + Math.random() * 9000).toString();
+    window.location.href = `index.html?room=${newRoomId}`;
+});
+
+// Bouton : Entrer un ID et rejoindre
+document.getElementById('btn-join-room').addEventListener('click', () => {
+    const inputRoom = document.getElementById('input-join-room').value.trim();
+    if (inputRoom.length === 4) {
+        window.location.href = `index.html?room=${inputRoom}`;
+    } else {
+        alert("Veuillez entrer un ID de salon valide à 4 chiffres (ex: 4872).");
+    }
+});
 
 // Nettoyage si le joueur quitte ou ferme l'onglet
 window.addEventListener('beforeunload', () => {
