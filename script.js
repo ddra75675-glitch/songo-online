@@ -69,7 +69,7 @@ onValue(roomRef, (snapshot) => {
     const data = snapshot.val();
     
     if (!data) {
-        initializeFirebaseRoom();
+        initializeFirebaseRoom(roomId, true);
         return;
     }
 
@@ -103,21 +103,24 @@ onValue(roomRef, (snapshot) => {
     updateUI();
 });
 
-function initializeFirebaseRoom() {
-    set(roomRef, {
+function initializeFirebaseRoom(targetRoomId, assignLocal = false) {
+    const targetRef = ref(db, `rooms/${targetRoomId}`);
+    set(targetRef, {
         board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "La salle multijoueur vient d'ouvrir.",
+        lastMoveLog: "Une nouvelle partie de Songo commence !",
         players: {
-            Sud: { name: localPlayerName, status: "online" },
+            Sud: { name: assignLocal ? localPlayerName : "En attente...", status: assignLocal ? "online" : "offline" },
             Nord: { name: "En attente...", status: "offline" }
         }
     });
-    localRole = "Sud";
-    document.getElementById('local-role-val').innerText = localRole;
-    document.getElementById('menu-player-role').innerText = localRole;
+    if (assignLocal) {
+        localRole = "Sud";
+        document.getElementById('local-role-val').innerText = localRole;
+        document.getElementById('menu-player-role').innerText = localRole;
+    }
 }
 
 // --- ENGINE DE RENDU INTERFACE ---
@@ -266,7 +269,10 @@ function resetGameOnline() {
 }
 
 // --- CONFIGURATION DES ÉCOUTEURS D'ÉVÉNEMENTS ---
-document.getElementById('btn-open-menu').addEventListener('click', () => menuModal.classList.remove('hidden'));
+document.getElementById('btn-open-menu').addEventListener('click', () => {
+    renderSavedRooms();
+    menuModal.classList.remove('hidden');
+});
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
 
@@ -293,7 +299,8 @@ document.querySelectorAll('.pit').forEach(p => {
 });
 document.getElementById('btn-reset').addEventListener('click', resetGameOnline);
 
-// --- TECHNIQUE : RECHERCHE RÉCURSIVE DE SALON UNIQUE LIBRE ---
+
+// --- LOGIQUE UNIQUE : RECHERCHE RÉCURSIVE & OUVRE LE NOUVEAU SALON ---
 async function generateUniqueRoomId() {
     const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
     const candidateRef = ref(db, `rooms/${candidateId}`);
@@ -301,7 +308,6 @@ async function generateUniqueRoomId() {
     try {
         const snapshot = await get(candidateRef);
         if (snapshot.exists()) {
-            // L'ID existe déjà dans la base Firebase globale, on relance récursivement
             return await generateUniqueRoomId(); 
         }
         return candidateId;
@@ -313,10 +319,16 @@ async function generateUniqueRoomId() {
 
 document.getElementById('btn-generate-room').addEventListener('click', async () => {
     const btn = document.getElementById('btn-generate-room');
-    btn.innerText = "⚡ Vérification réseau...";
+    btn.innerText = "⚡ Création du salon...";
     btn.disabled = true;
 
+    // 1. Trouve un identifiant unique disponible
     const uniqueRoomId = await generateUniqueRoomId();
+    
+    // 2. Initialise immédiatement la structure de la nouvelle partie sur Firebase
+    await initializeFirebaseRoom(uniqueRoomId, false);
+    
+    // 3. Redirige immédiatement l'utilisateur sur la page pour débuter le jeu
     window.location.href = `index.html?room=${uniqueRoomId}`;
 });
 
@@ -328,6 +340,71 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
         alert("Veuillez entrer un ID valide à 4 chiffres.");
     }
 });
+
+
+// --- SYSTEME DE STOCKAGE / SAUVEGARDE DES SALONS LOCAUX ---
+document.getElementById('btn-save-current-room').addEventListener('click', () => {
+    let savedRooms = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
+    if (!savedRooms.includes(roomId)) {
+        savedRooms.push(roomId);
+        localStorage.setItem('songo_saved_rooms', JSON.stringify(savedRooms));
+        alert(`Salon #${roomId} ajouté à vos favoris !`);
+        renderSavedRooms();
+    } else {
+        alert("Ce salon fait déjà partie de votre liste de sauvegarde.");
+    }
+});
+
+function renderSavedRooms() {
+    const container = document.getElementById('saved-rooms-list');
+    let savedRooms = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
+    
+    if (savedRooms.length === 0) {
+        container.innerHTML = `<span style="color: gray; font-style: italic; text-align: center;">Aucun salon sauvegardé</span>`;
+        return;
+    }
+    
+    container.innerHTML = "";
+    savedRooms.forEach(id => {
+        const row = document.createElement('div');
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.background = "var(--bg-card)";
+        row.style.padding = "4px 8px";
+        row.style.borderRadius = "4px";
+        row.style.border = "1px solid var(--border-btn)";
+
+        const link = document.createElement('span');
+        link.innerText = `Salon #${id}`;
+        link.style.cursor = "pointer";
+        link.style.fontWeight = "bold";
+        link.style.flex = "1";
+        link.addEventListener('click', () => {
+            window.location.href = `index.html?room=${id}`;
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.innerText = "❌";
+        deleteBtn.style.border = "none";
+        deleteBtn.style.background = "none";
+        deleteBtn.style.cursor = "pointer";
+        deleteBtn.style.fontSize = "0.75rem";
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            savedRooms = savedRooms.filter(r => r !== id);
+            localStorage.setItem('songo_saved_rooms', JSON.stringify(savedRooms));
+            renderSavedRooms();
+        });
+
+        row.appendChild(link);
+        row.appendChild(deleteBtn);
+        container.appendChild(row);
+    });
+}
+
+// Initialisation au chargement de l'écran principal
+renderSavedRooms();
 
 window.addEventListener('beforeunload', () => {
     if (localRole === "Sud" || localRole === "Nord") {
