@@ -37,7 +37,6 @@
             </div>
 
             <div class="board-row row-nord">
-                <!-- Grenier Nord au bout à gauche (indices de 13 à 7 de gauche à droite pour le joueur) -->
                 <div class="grenier-box" id="grenier-nord">
                     <span class="badge-grenier" id="badge-g-nord">0</span>
                     <div class="seeds-area-grenier" id="seeds-g-nord"></div>
@@ -73,7 +72,6 @@
                     <div class="pit" data-index="6"><span class="pit-label">S7</span><div class="seeds-area"></div><span class="pit-count" id="lbl-6">5</span></div>
                 </div>
 
-                <!-- Grenier Sud au bout à droite -->
                 <div class="grenier-box" id="grenier-sud">
                     <span class="badge-grenier" id="badge-g-sud">0</span>
                     <div class="seeds-area-grenier" id="seeds-g-sud"></div>
@@ -99,7 +97,7 @@
         </div>
     </footer>
 
-    <!-- PAGE D'ACCUEIL / MENU MULTIJOUEUR AVEC CHOIX DE SALON -->
+    <!-- PAGE D'ACCUEIL / MENU MULTIJOUEUR -->
     <div class="modal-overlay" id="menu-modal">
         <div class="modal-card">
             <div class="modal-header">
@@ -114,7 +112,7 @@
                     <input type="text" id="input-player-name" value="Joueur" class="input-text-songo" maxlength="12">
                 </div>
 
-                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 15px 0;">
+                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 12px 0;">
 
                 <!-- GESTION DES SALONS -->
                 <div class="config-group">
@@ -126,18 +124,30 @@
                 </div>
 
                 <div style="margin-bottom: 15px;">
-                    <button class="btn-modal" id="btn-generate-room" style="width: 100%; font-size: 0.85rem; background: var(--bg-cream);">🎲 Générer un nouveau salon</button>
+                    <button class="btn-modal" id="btn-generate-room" style="width: 100%; font-size: 0.85rem; background: #27ae60; color: white;">🎲 Générer un nouveau salon (Nouvelle Partie)</button>
                 </div>
 
-                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 15px 0;">
+                <!-- OPTION : SALONS SAUVEGARDÉS -->
+                <div class="config-group" style="margin-bottom: 15px;">
+                    <label>MES SALONS SAUVEGARDÉS</label>
+                    <div id="saved-rooms-list" style="max-height: 90px; overflow-y: auto; background: rgba(0,0,0,0.05); padding: 5px; border-radius: 6px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
+                        <!-- Rempli dynamiquement par JS -->
+                        <span style="color: gray; font-style: italic; text-align: center;">Aucun salon sauvegardé</span>
+                    </div>
+                </div>
+
+                <hr style="border: none; border-top: 1px dashed var(--border-btn); margin: 12px 0;">
 
                 <!-- Statuts Actuels -->
-                <div class="menu-status-bar">
-                    <span>SALON ACTUEL :</span>
-                    <strong id="menu-room-id">Chargement...</strong>
+                <div class="menu-status-bar" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span>SALON ACTUEL :</span>
+                        <strong id="menu-room-id">Chargement...</strong>
+                    </div>
+                    <button id="btn-save-current-room" class="btn-modal" style="margin: 0; padding: 4px 10px; font-size: 0.75rem; background: #f39c12; color: white;">⭐ Sauvegarder</button>
                 </div>
 
-                <div class="menu-status-bar">
+                <div class="menu-status-bar" style="margin-top: 5px;">
                     <span>VOTRE RÔLE :</span>
                     <strong id="menu-player-role" style="color: #e67e22;">Attribution...</strong>
                 </div>
@@ -178,11 +188,11 @@
                 <button class="close-btn" id="btn-close-general-rules">x</button>
             </div>
             <div class="modal-body scrollable">
-                <p>Le Songo est un jeu de société traditionnel d'Afrique centrale appartenant à la famille des Mancalas.</p>
+                <p>Le Songo est un jeu traditionnel d'Afrique centrale appartenant à la famille des Mancalas.</p>
                 <ul>
                     <li>Le plateau est composé de deux rangées de 7 trous. Chaque trou contient au départ 5 graines.</li>
-                    <li>À votre tour, sélectionnez l'un de vos trous contenant des graines. Celles-ci sont ramassées et semées une par une dans les trous suivants dans le sens horaire.</li>
-                    <li>Il est interdit de déposer une graine dans le trou de départ si le tour de semaille fait un tour complet complet du plateau.</li>
+                    <li>À votre tour, sélectionnez l'un de vos trous contenant des graines. Celles-ci sont distribuées une par une dans les trous suivants.</li>
+                    <li>Il est interdit de déposer une graine dans le trou de départ si le tour de semaille fait un tour complet du plateau.</li>
                 </ul>
             </div>
             <div class="modal-footer">
@@ -191,7 +201,6 @@
         </div>
     </div>
 
-    <!-- INCLUSION DU COMPOSANT SCRIPT SÉCURISÉ EN TANT QUE MODULE -->
     <script type="module" src="script.js"></script>
 </body>
 </html>
