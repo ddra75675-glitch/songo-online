@@ -1,66 +1,76 @@
-// --- LOGIQUE DE SYNCHRONISATION MULTIJOUEUR DISTANTE VIA AJAX ---
+// =========================================================================
+//  SONGO ONLINE - ARCHITECTURE COMPLÈTE (AJAX, RÔLES & THEMES)
+// =========================================================================
 
-// URL de l'API REST globale pour lier les deux joueurs distants
+// CONFIGURATION : Remplacez par l'URL réelle de votre Realtime Database Firebase
 const BASE_API_URL = "https://VOTRE_PROJECT_ID-default-rtdb.firebaseio.com/rooms";
 
-// Analyse des paramètres de l'URL pour la gestion des invitations distantes
+// 1. ANALYSE ET GESTION DU SALON DANS L'URL
 const urlParams = new URLSearchParams(window.location.search);
 let roomId = urlParams.get('room');
+
 if (!roomId) {
     roomId = Math.floor(1000 + Math.random() * 9000).toString();
     window.history.pushState({}, '', `?room=${roomId}`);
 }
 
-// Données d'identification du joueur local
-let localRole = ""; 
+// 2. ÉTAT DU JOUEUR LOCAL ET DU JEU
+let localRole = ""; // Dynamique : "Sud", "Nord" ou "Spectateur"
 let localPlayerName = localStorage.getItem('songo_pseudo') || "Joueur_" + Math.floor(Math.random() * 99);
 
-// Variables synchronisées du Songo
 let board = [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5];
-let scores = [0, 0];
+let scores = [0, 0]; // [0] = Sud, [1] = Nord
 let currentPlayer = "Sud";
 let gameActive = true;
-let playersSync = { Sud: { name: "En attente...", status: "offline" }, Nord: { name: "En attente...", status: "offline" } };
+let playersSync = { 
+    Sud: { name: "En attente...", status: "offline" }, 
+    Nord: { name: "En attente...", status: "offline" } 
+};
 
 const pitLabels = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "N1", "N2", "N3", "N4", "N5", "N6", "N7"];
 
-// Liaisons DOM
+// Liaisons DOM principales
 const menuModal = document.getElementById('menu-modal');
 const rulesModal = document.getElementById('rules-modal');
 const generalRulesModal = document.getElementById('general-rules-modal');
 const inputName = document.getElementById('input-player-name');
 inputName.value = localPlayerName;
 
-// --- CRUCIAL : FONCTIONS REQUÊTES AJAX (FETCH ASYNC EXCLUSIF) ---
+// =========================================================================
+//  SECTION INTERNET : SYNCHRONISATION VIA FLUX REST AJAX
+// =========================================================================
 
-// Fonction AJAX principale : Va chercher les données de l'autre joueur sur le Cloud
+/**
+ * Récupère en continu l'état du salon sur le serveur
+ */
 async function ajaxGetRoomData() {
     try {
         let response = await fetch(`${BASE_API_URL}/${roomId}.json`);
         let data = await response.json();
         
-        // Si le salon n'existe pas encore sur internet, le premier joueur le crée
         if (!data) {
             await ajaxPutInitialRoom(roomId, true);
             return;
         }
 
-        // Importation immédiate des variables de jeu distantes
         board = data.board || board;
         scores = data.scores || scores;
         currentPlayer = data.currentPlayer || currentPlayer;
         gameActive = data.gameActive !== undefined ? data.gameActive : gameActive;
-        playersSync = data.players || playersSync;
+        playersSync = data.players || {};
 
-        // Logique d'attribution automatique des rôles distants (Sud ou Nord)
+        // --- ALGORITHME D'ATTRIBUTION UNIQUE DES RÔLES (MAX 2 JOUEURS) ---
         if (!localRole) {
             if (!playersSync.Sud || playersSync.Sud.status === "offline" || playersSync.Sud.name === localPlayerName) {
                 localRole = "Sud";
-            } else if (!playersSync.Nord || playersSync.Nord.status === "offline" || playersSync.Nord.name === localPlayerName) {
+            } 
+            else if (!playersSync.Nord || playersSync.Nord.status === "offline" || playersSync.Nord.name === localPlayerName) {
                 localRole = "Nord";
-            } else {
+            } 
+            else {
                 localRole = "Spectateur";
             }
+            
             document.getElementById('local-role-val').innerText = localRole;
             document.getElementById('menu-player-role').innerText = localRole;
 
@@ -76,18 +86,20 @@ async function ajaxGetRoomData() {
 
         updateUI();
     } catch (error) {
-        console.error("Échec de la requête AJAX de synchronisation :", error);
+        console.error("Erreur de rafraîchissement AJAX :", error);
     }
 }
 
-// Requête AJAX PUT : Écrit ou réinitialise un salon entier sur le réseau distant
+/**
+ * Crée un salon vide ou écrase l'ancien lors d'une réinitialisation
+ */
 async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
     const initPayload = {
         board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "Nouveau salon distant initialisé par AJAX.",
+        lastMoveLog: "Le jeu commence ! Bonne chance.",
         players: {
             Sud: { name: assignLocal ? localPlayerName : "En attente...", status: assignLocal ? "online" : "offline" },
             Nord: { name: "En attente...", status: "offline" }
@@ -106,11 +118,10 @@ async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
             document.getElementById('menu-player-role').innerText = localRole;
         }
     } catch (error) {
-        console.error("Erreur AJAX PUT (Initialisation distante) :", error);
+        console.error("Erreur lors du PUT initial :", error);
     }
 }
 
-// Requête AJAX PATCH : Transmet instantanément le coup qu'on vient de jouer sur le serveur distant
 async function ajaxPatchGameState(updatedFields) {
     try {
         await fetch(`${BASE_API_URL}/${roomId}.json`, {
@@ -119,11 +130,10 @@ async function ajaxPatchGameState(updatedFields) {
             body: JSON.stringify(updatedFields)
         });
     } catch (error) {
-        console.error("Erreur AJAX PATCH (Envoi du coup) :", error);
+        console.error("Erreur d'envoi du coup :", error);
     }
 }
 
-// Requête AJAX PATCH : Met à jour la présence internet des joueurs
 async function ajaxPatchPlayerStatus(role, name, status) {
     if (role !== "Sud" && role !== "Nord") return;
     try {
@@ -135,22 +145,78 @@ async function ajaxPatchPlayerStatus(role, name, status) {
             body: JSON.stringify(updateObject)
         });
     } catch (error) {
-        console.error("Erreur AJAX PATCH (Statut joueur) :", error);
+        console.error("Erreur statut joueur :", error);
     }
 }
 
-// --- LE MOTEUR DU POLLING INTERNET ---
-// Pour que les deux joueurs distants voient les actions de l'autre, 
-// AJAX va interroger l'API toutes les 1000 millisecondes (1 seconde) de façon asynchrone.
-setInterval(() => {
-    ajaxGetRoomData();
-}, 1000);
-
-// Premier appel immédiat au chargement du site distant
+// Polling synchronisé toutes les 1000ms
+setInterval(ajaxGetRoomData, 1000);
 ajaxGetRoomData();
 
 
-// --- RENDER DU PLATEAU GRAPHIQUE DE SONGO ---
+// =========================================================================
+//  SECTION JEU : DÉROULEMENT DES TOURS & SEMAILLES
+// =========================================================================
+
+async function move(startIndex) {
+    if (!gameActive) return;
+    
+    // Sécurité stricte : Les spectateurs et joueurs hors-tour sont bloqués
+    if (localRole === "Spectateur") {
+        alert("Action interdite : Vous êtes spectateur.");
+        return;
+    }
+    if (currentPlayer !== localRole) return;
+    if (localRole === "Sud" && (startIndex < 0 || startIndex > 6)) return;
+    if (localRole === "Nord" && (startIndex < 7 || startIndex > 13)) return;
+    if (board[startIndex] === 0) return;
+
+    let seeds = board[startIndex];
+    board[startIndex] = 0;
+    let currentIndex = startIndex;
+
+    while (seeds > 0) {
+        currentIndex = (currentIndex + 1) % 14;
+        if (currentIndex === startIndex) continue;
+        board[currentIndex]++;
+        seeds--;
+    }
+
+    let captured = 0;
+    let isOpponentSide = (localRole === "Sud" && currentIndex >= 7) || (localRole === "Nord" && currentIndex <= 6);
+    if (isOpponentSide && [2, 3, 4].includes(board[currentIndex])) {
+        captured = board[currentIndex];
+        board[currentIndex] = 0;
+    }
+
+    const activeName = localRole === "Sud" ? playersSync.Sud.name : playersSync.Nord.name;
+    let nextPlayer = localRole === "Sud" ? "Nord" : "Sud";
+    let logMsg = `${activeName} a joué la case ${pitLabels[startIndex]} (Prise : ${captured})`;
+
+    if (localRole === "Sud") { scores[0] += captured; } else { scores[1] += captured; }
+
+    let nextGameActive = true;
+    if (scores[0] >= 40 || scores[1] >= 40 || board.reduce((a,b)=>a+b, 0) < 10) {
+        nextGameActive = false;
+        const winnerName = scores[0] >= 40 ? playersSync.Sud.name : (scores[1] >= 40 ? playersSync.Nord.name : "Égalité");
+        logMsg += ` - Gagnant : ${winnerName}`;
+    }
+
+    await ajaxPatchGameState({
+        board: board,
+        scores: scores,
+        currentPlayer: nextPlayer,
+        gameActive: nextGameActive,
+        lastMoveLog: logMsg
+    });
+
+    updateUI();
+}
+
+// =========================================================================
+//  SECTION RENDU : AFFICHAGE DYNAMIQUE DU BOARD ET DES GRAINES
+// =========================================================================
+
 function updateUI() {
     document.getElementById('menu-room-id').innerText = `#${roomId}`;
     document.getElementById('top-room-id').innerText = `#${roomId}`;
@@ -173,13 +239,13 @@ function updateUI() {
     document.getElementById('current-turn-val').innerText = currentTurnName;
 
     if (!gameActive) {
-        document.getElementById('center-message').innerText = "Partie terminée !";
+        document.getElementById('center-message').innerText = "🏆 Partie Terminée !";
     } else if (localRole === "Spectateur") {
-        document.getElementById('center-message').innerText = `Tour de : ${currentTurnName}`;
+        document.getElementById('center-message').innerText = `👀 Spectateur - Tour : ${currentTurnName}`;
     } else if (currentPlayer === localRole) {
-        document.getElementById('center-message').innerText = "À vous de jouer !";
+        document.getElementById('center-message').innerText = "🟢 À vous de jouer !";
     } else {
-        document.getElementById('center-message').innerText = `Attente de l'adversaire (${currentTurnName})...`;
+        document.getElementById('center-message').innerText = `⏳ Attente de l'adversaire (${currentTurnName})...`;
     }
 
     for(let idx = 0; idx < 14; idx++) {
@@ -220,68 +286,106 @@ function renderGrenier(id, count) {
     }
 }
 
-// --- LOGIQUE DÉCISIONNELLE DU SEMAILLE ---
-async function move(startIndex) {
-    if (!gameActive) return;
-    if (localRole === "Spectateur" || currentPlayer !== localRole) return;
-    if (currentPlayer === "Sud" && (startIndex < 0 || startIndex > 6)) return;
-    if (currentPlayer === "Nord" && (startIndex < 7 || startIndex > 13)) return;
-    if (board[startIndex] === 0) return;
-
-    let seeds = board[startIndex];
-    board[startIndex] = 0;
-    let currentIndex = startIndex;
-
-    while (seeds > 0) {
-        currentIndex = (currentIndex + 1) % 14;
-        if (currentIndex === startIndex) continue;
-        board[currentIndex]++;
-        seeds--;
-    }
-
-    let captured = 0;
-    let isOpponentSide = (currentPlayer === "Sud" && currentIndex >= 7) || (currentPlayer === "Nord" && currentIndex <= 6);
-    if (isOpponentSide && [2, 3, 4].includes(board[currentIndex])) {
-        captured = board[currentIndex];
-        board[currentIndex] = 0;
-    }
-
-    const activeName = currentPlayer === "Sud" ? playersSync.Sud.name : playersSync.Nord.name;
-    let nextPlayer = currentPlayer === "Sud" ? "Nord" : "Sud";
-    let logMsg = `${activeName} a joué la case ${pitLabels[startIndex]} (Prise : ${captured})`;
-
-    if (currentPlayer === "Sud") { scores[0] += captured; } else { scores[1] += captured; }
-
-    let nextGameActive = true;
-    if (scores[0] >= 40 || scores[1] >= 40 || board.reduce((a,b)=>a+b, 0) < 10) {
-        nextGameActive = false;
-        const winnerName = scores[0] >= 40 ? playersSync.Sud.name : (scores[1] >= 40 ? playersSync.Nord.name : "Égalité");
-        logMsg += ` - Victoire finale : ${winnerName}`;
-    }
-
-    // Sauvegarde immédiate du coup sur internet via AJAX PATCH
-    await ajaxPatchGameState({
-        board: board,
-        scores: scores,
-        currentPlayer: nextPlayer,
-        gameActive: nextGameActive,
-        lastMoveLog: logMsg
-    });
-
-    updateUI();
-}
-
 let lastLoggedText = "";
 function appendHistoryOnce(msg) {
     if (msg === lastLoggedText) return;
     lastLoggedText = msg;
     const historyList = document.getElementById('history-list');
+    if (!historyList) return;
     const li = document.createElement('li');
     li.innerText = msg;
     historyList.insertBefore(li, historyList.firstChild);
 }
 
-// --- GESTIONNAIRES D'ÉVÉNEMENTS ---
+// =========================================================================
+//  SECTION LOGIQUE ET RECHERCHE DE SALONS AUTO UNIQUES VIA RECURSION AJAX
+// =========================================================================
+
+async function generateUniqueRoomIdViaAjax() {
+    const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
+    try {
+        let response = await fetch(`${BASE_API_URL}/${candidateId}.json`);
+        let data = await response.json();
+        if (data !== null) {
+            return await generateUniqueRoomIdViaAjax();
+        }
+        return candidateId;
+    } catch (e) {
+        return candidateId;
+    }
+}
+
+document.getElementById('btn-generate-room').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate-room');
+    btn.innerText = "⚡ Recherche d'un salon...";
+    btn.disabled = true;
+
+    let uniqueId = await generateUniqueRoomIdViaAjax();
+    btn.innerText = "🛠️ Création...";
+    
+    await ajaxPutInitialRoom(uniqueId, true);
+    window.location.href = `index.html?room=${uniqueId}`;
+});
+
+document.getElementById('btn-join-room').addEventListener('click', () => {
+    const inputRoom = document.getElementById('input-join-room').value.trim();
+    if (inputRoom.length === 4) {
+        window.location.href = `index.html?room=${inputRoom}`;
+    }
+});
+
+// RECOMMENCER : Forçage asynchrone instantané du rafraîchissement
+document.getElementById('btn-reset').addEventListener('click', async () => {
+    const btnReset = document.getElementById('btn-reset');
+    btnReset.innerText = "🔄 Reset distant...";
+    btnReset.disabled = true;
+
+    await ajaxPutInitialRoom(roomId, false); 
+    await ajaxGetRoomData();
+
+    btnReset.innerText = "Recommencer la partie";
+    btnReset.disabled = false;
+    menuModal.classList.add('hidden');
+});
+
+inputName.addEventListener('change', () => {
+    localPlayerName = inputName.value.trim() || "Anonyme";
+    localStorage.setItem('songo_pseudo', localPlayerName);
+    if (localRole === "Sud" || localRole === "Nord") {
+        ajaxPatchPlayerStatus(localRole, localPlayerName, "online");
+    }
+});
+
+// =========================================================================
+//  SECTION THEME : COMMUTATEUR MODE CLAIR / SOMBRES (THEME SWITCHER)
+// =========================================================================
+
+const savedTheme = localStorage.getItem('songo_theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+updateThemeButtonIcon(savedTheme);
+
+const themeBtn = document.getElementById('btn-theme');
+if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('songo_theme', newTheme);
+        updateThemeButtonIcon(newTheme);
+    });
+}
+
+function updateThemeButtonIcon(theme) {
+    const themeBtn = document.getElementById('btn-theme');
+    if (!themeBtn) return;
+    themeBtn.innerHTML = theme === 'dark' ? "☀️ Mode Clair" : "🌙 Mode Sombre";
+}
+
+// =========================================================================
+//  SECTION MODALS & HISTORIQUE LOCAL
+// =========================================================================
+
 document.getElementById('btn-open-menu').addEventListener('click', () => { renderSavedRooms(); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
@@ -297,56 +401,13 @@ document.getElementById('btn-rules-back-to-menu').addEventListener('click', () =
 document.querySelectorAll('.pit').forEach(p => {
     p.addEventListener('click', () => move(parseInt(p.getAttribute('data-index'))));
 });
-document.getElementById('btn-reset').addEventListener('click', () => ajaxPutInitialRoom(roomId, false));
 
-inputName.addEventListener('change', () => {
-    localPlayerName = inputName.value.trim() || "Anonyme";
-    localStorage.setItem('songo_pseudo', localPlayerName);
-    ajaxPatchPlayerStatus(localRole, localPlayerName, "online");
-});
-
-// --- RECHERCHE ET CRÉATION DE SALONS DISTANTS VIA REQUÊTES AJAX RÉCURSIVES ---
-async function generateUniqueRoomIdViaAjax() {
-    const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
-    try {
-        let response = await fetch(`${BASE_API_URL}/${candidateId}.json`);
-        let data = await response.json();
-        if (data !== null) {
-            // L'identifiant est déjà pris par deux autres joueurs distants, on relance la boucle AJAX
-            return await generateUniqueRoomIdViaAjax();
-        }
-        return candidateId;
-    } catch (e) {
-        return candidateId;
-    }
-}
-
-document.getElementById('btn-generate-room').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-generate-room');
-    btn.innerText = "⚡ Création du salon distant...";
-    btn.disabled = true;
-
-    let uniqueId = await generateUniqueRoomIdViaAjax();
-    await ajaxPutInitialRoom(uniqueId, false);
-    
-    // Ouvre instantanément le jeu de Songo sur le nouveau salon distant
-    window.location.href = `index.html?room=${uniqueId}`;
-});
-
-document.getElementById('btn-join-room').addEventListener('click', () => {
-    const inputRoom = document.getElementById('input-join-room').value.trim();
-    if (inputRoom.length === 4) {
-        window.location.href = `index.html?room=${inputRoom}`;
-    }
-});
-
-// --- PERSISTENCE LOCAL STORAGE DES SALONS ---
 document.getElementById('btn-save-current-room').addEventListener('click', () => {
     let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
     if (!saved.includes(roomId)) {
         saved.push(roomId);
         localStorage.setItem('songo_saved_rooms', JSON.stringify(saved));
-        alert(`Salon distant #${roomId} ajouté à vos favoris !`);
+        alert(`Salon distant #${roomId} sauvegardé !`);
         renderSavedRooms();
     }
 });
@@ -376,7 +437,6 @@ function renderSavedRooms() {
 }
 renderSavedRooms();
 
-// Notification de déconnexion réseau lors de la fermeture de la page web
 window.addEventListener('beforeunload', () => {
     if (localRole === "Sud" || localRole === "Nord") {
         ajaxPatchPlayerStatus(localRole, localPlayerName, "offline");
