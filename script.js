@@ -1,37 +1,20 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+// --- CONFIGURATION DE L'API BASE DES SALONS (REST VIA AJAX) ---
+// Remplacer "VOTRE_PROJECT_ID" par l'ID réel de ton projet Firebase
+const BASE_API_URL = "https://VOTRE_PROJECT_ID-default-rtdb.firebaseio.com/rooms";
 
-// CONFIGURATION FIREBASE (À REMPLACER PAR VOS PROPRES CLÉS DE PROJET CONFIGURÉES)
-const firebaseConfig = {
-    apiKey: "VOTRE_API_KEY",
-    authDomain: "VOTRE_PROJECT_ID.firebaseapp.com",
-    databaseURL: "https://VOTRE_PROJECT_ID-default-rtdb.firebaseio.com",
-    projectId: "VOTRE_PROJECT_ID",
-    storageBucket: "VOTRE_PROJECT_ID.appspot.com",
-    messagingSenderId: "VOTRE_ID",
-    appId: "VOTRE_APP_ID"
-};
-
-// Initialisation de l'instance réseau
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-// --- GESTION DU SALON MULTIJOUEUR ---
+// --- INITIALISATION DU SALON ---
 const urlParams = new URLSearchParams(window.location.search);
 let roomId = urlParams.get('room');
 if (!roomId) {
-    roomId = Math.floor(1000 + Math.random() * 9000).toString(); // Salon par défaut
+    roomId = Math.floor(1000 + Math.random() * 9000).toString();
     window.history.pushState({}, '', `?room=${roomId}`);
 }
 
-// Variables locales de l'état du joueur local
-let localRole = ""; // "Sud", "Nord" ou "Spectateur"
+// Variables d'état local
+let localRole = ""; 
 let localPlayerName = localStorage.getItem('songo_pseudo') || "Joueur_" + Math.floor(Math.random() * 99);
 
-// Référence de synchronisation Database
-const roomRef = ref(db, `rooms/${roomId}`);
-
-// --- VARIABLES LOCALES DE JEU SYNC ---
+// Variables du moteur de jeu synchronisées via AJAX
 let board = [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5];
 let scores = [0, 0];
 let currentPlayer = "Sud";
@@ -40,90 +23,132 @@ let playersSync = { Sud: { name: "En attente...", status: "offline" }, Nord: { n
 
 const pitLabels = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "N1", "N2", "N3", "N4", "N5", "N6", "N7"];
 
-// --- INITIALISATION DES ANCHORS MODALES ---
+// Dom Elements
 const menuModal = document.getElementById('menu-modal');
 const rulesModal = document.getElementById('rules-modal');
 const generalRulesModal = document.getElementById('general-rules-modal');
 const inputName = document.getElementById('input-player-name');
-
 inputName.value = localPlayerName;
 
-// --- FORCE LANDSCAPE ---
-function forceLandscape() {
-    if (screen.orientation && screen.orientation.lock) { screen.orientation.lock('landscape').catch(()=>{}); }
-}
-window.addEventListener('load', forceLandscape);
-document.addEventListener('click', forceLandscape);
+// --- FONCTIONS LOGIQUES AJAX (COMMUNICATION AVEC LE SERVEUR) ---
 
-// --- SYNC INPUTS ---
-inputName.addEventListener('input', () => {
-    localPlayerName = inputName.value.trim() || "Anonyme";
-    localStorage.setItem('songo_pseudo', localPlayerName);
-    if(localRole === "Sud" || localRole === "Nord") {
-        update(ref(db, `rooms/${roomId}/players/${localRole}`), { name: localPlayerName, status: "online" });
-    }
-});
-
-// --- ÉCOUTE RÉSEAU FIREBASE (RÉCEPTION DES DONNÉES EN DIRECT) ---
-onValue(roomRef, (snapshot) => {
-    const data = snapshot.val();
-    
-    if (!data) {
-        initializeFirebaseRoom(roomId, true);
-        return;
-    }
-
-    board = data.board;
-    scores = data.scores;
-    currentPlayer = data.currentPlayer;
-    gameActive = data.gameActive;
-    playersSync = data.players || playersSync;
-
-    if (!localRole) {
-        if (!data.players || !data.players.Sud || data.players.Sud.status === "offline") {
-            localRole = "Sud";
-        } else if (!data.players.Nord || data.players.Nord.status === "offline") {
-            localRole = "Nord";
-        } else {
-            localRole = "Spectateur";
-        }
-        document.getElementById('local-role-val').innerText = localRole;
-        document.getElementById('menu-player-role').innerText = localRole;
+// 1. Requête AJAX GET : Récupère l'état actuel du salon
+async function ajaxGetRoomData() {
+    try {
+        let response = await fetch(`${BASE_API_URL}/${roomId}.json`);
+        let data = await response.json();
         
-        if (localRole === "Sud" || localRole === "Nord") {
-            update(ref(db, `rooms/${roomId}/players/${localRole}`), { name: localPlayerName, status: "online" });
+        if (!data) {
+            // Si le salon n'existe pas côté serveur, on le crée via un PUT AJAX
+            await ajaxPutInitialRoom(roomId, true);
+            return;
         }
+
+        // Transfert des données reçues par AJAX dans nos variables
+        board = data.board || board;
+        scores = data.scores || scores;
+        currentPlayer = data.currentPlayer || currentPlayer;
+        gameActive = data.gameActive !== undefined ? data.gameActive : gameActive;
+        playersSync = data.players || playersSync;
+
+        // Détermination du rôle à la première connexion
+        if (!localRole) {
+            if (!playersSync.Sud || playersSync.Sud.status === "offline" || playersSync.Sud.name === localPlayerName) {
+                localRole = "Sud";
+            } else if (!playersSync.Nord || playersSync.Nord.status === "offline" || playersSync.Nord.name === localPlayerName) {
+                localRole = "Nord";
+            } else {
+                localRole = "Spectateur";
+            }
+            document.getElementById('local-role-val').innerText = localRole;
+            document.getElementById('menu-player-role').innerText = localRole;
+
+            if (localRole === "Sud" || localRole === "Nord") {
+                await ajaxPatchPlayerStatus(localRole, localPlayerName, "online");
+            }
+        }
+
+        if (data.lastMoveLog) {
+            document.getElementById('last-move-txt').innerText = data.lastMoveLog;
+            appendHistoryOnce(data.lastMoveLog);
+        }
+
+        updateUI();
+    } catch (error) {
+        console.error("Erreur AJAX lors de la récupération :", error);
     }
+}
 
-    if (data.lastMoveLog) {
-        document.getElementById('last-move-txt').innerText = data.lastMoveLog;
-        appendHistoryOnce(data.lastMoveLog);
-    }
-
-    updateUI();
-});
-
-function initializeFirebaseRoom(targetRoomId, assignLocal = false) {
-    const targetRef = ref(db, `rooms/${targetRoomId}`);
-    set(targetRef, {
+// 2. Requête AJAX PUT : Initialise ou écrase un salon entier
+async function ajaxPutInitialRoom(targetRoomId, assignLocal) {
+    const freshData = {
         board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
         scores: [0, 0],
         currentPlayer: "Sud",
         gameActive: true,
-        lastMoveLog: "Une nouvelle partie de Songo commence !",
+        lastMoveLog: "Partie lancée via requêtes AJAX !",
         players: {
             Sud: { name: assignLocal ? localPlayerName : "En attente...", status: assignLocal ? "online" : "offline" },
             Nord: { name: "En attente...", status: "offline" }
         }
-    });
-    if (assignLocal) {
-        localRole = "Sud";
-        document.getElementById('local-role-val').innerText = localRole;
-        document.getElementById('menu-player-role').innerText = localRole;
+    };
+
+    try {
+        await fetch(`${BASE_API_URL}/${targetRoomId}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(freshData)
+        });
+        if (assignLocal) {
+            localRole = "Sud";
+            document.getElementById('local-role-val').innerText = localRole;
+            document.getElementById('menu-player-role').innerText = localRole;
+        }
+    } catch (error) {
+        console.error("Erreur AJAX PUT :", error);
     }
 }
 
-// --- ENGINE DE RENDU INTERFACE ---
+// 3. Requête AJAX PATCH : Met à jour uniquement l'état du jeu après un coup
+async function ajaxPatchGameState(updatedFields) {
+    try {
+        await fetch(`${BASE_API_URL}/${roomId}.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedFields)
+        });
+    } catch (error) {
+        console.error("Erreur AJAX PATCH (State) :", error);
+    }
+}
+
+// 4. Requête AJAX PATCH : Met à jour le pseudo/statut d'un joueur
+async function ajaxPatchPlayerStatus(role, name, status) {
+    if (role !== "Sud" && role !== "Nord") return;
+    try {
+        let pData = {};
+        pData[role] = { name: name, status: status };
+        await fetch(`${BASE_API_URL}/${roomId}/players.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pData)
+        });
+    } catch (error) {
+        console.error("Erreur AJAX PATCH (Player) :", error);
+    }
+}
+
+// --- BOUCLE DE SYNCHRONISATION AJAX AUTOMATIQUE (POLLING) ---
+// Comme AJAX ne gère pas nativement le push en direct, on interroge le serveur toutes les 2 secondes
+setInterval(() => {
+    ajaxGetRoomData();
+}, 2000);
+
+// Lancement direct au chargement initial
+ajaxGetRoomData();
+
+
+// --- MOTEUR DE RENDU GRAPHIQUE ---
 function updateUI() {
     document.getElementById('menu-room-id').innerText = `#${roomId}`;
     document.getElementById('top-room-id').innerText = `#${roomId}`;
@@ -195,8 +220,8 @@ function renderGrenier(id, count) {
     }
 }
 
-// --- LOGIQUE DU SEMAILLE & PRISE ---
-function move(startIndex) {
+// --- MECANIQUE DE SEMAILLE DU SONGO ---
+async function move(startIndex) {
     if (!gameActive) return;
     if (localRole === "Spectateur" || currentPlayer !== localRole) return;
     if (currentPlayer === "Sud" && (startIndex < 0 || startIndex > 6)) return;
@@ -238,13 +263,16 @@ function move(startIndex) {
         logMsg += ` - Partie Terminée ! Victoire de ${winnerName}`;
     }
 
-    update(roomRef, {
+    // Envoi synchrone du coup joué via AJAX PATCH
+    await ajaxPatchGameState({
         board: board,
         scores: scores,
         currentPlayer: nextPlayer,
         gameActive: nextGameActive,
         lastMoveLog: logMsg
     });
+
+    updateUI();
 }
 
 let lastLoggedText = "";
@@ -257,22 +285,8 @@ function appendHistoryOnce(msg) {
     historyList.insertBefore(li, historyList.firstChild);
 }
 
-function resetGameOnline() {
-    update(roomRef, {
-        board: [5, 5, 5, 5, 5, 5, 5,  5, 5, 5, 5, 5, 5, 5],
-        scores: [0, 0],
-        currentPlayer: "Sud",
-        gameActive: true,
-        lastMoveLog: "Le plateau a été réinitialisé."
-    });
-    document.getElementById('history-list').innerHTML = '';
-}
-
-// --- CONFIGURATION DES ÉCOUTEURS D'ÉVÉNEMENTS ---
-document.getElementById('btn-open-menu').addEventListener('click', () => {
-    renderSavedRooms();
-    menuModal.classList.remove('hidden');
-});
+// --- INTERACTION DU MENU ET EVENEMENTS ---
+document.getElementById('btn-open-menu').addEventListener('click', () => { renderSavedRooms(); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
 
@@ -284,130 +298,88 @@ document.getElementById('btn-general-rules').addEventListener('click', () => { m
 document.getElementById('btn-close-general-rules').addEventListener('click', () => { generalRulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-rules-back-to-menu').addEventListener('click', () => { generalRulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 
-const btnTheme = document.getElementById('btn-theme');
-btnTheme.addEventListener('click', () => {
-    const root = document.documentElement;
-    if (root.getAttribute('data-theme') === 'dark') {
-        root.setAttribute('data-theme', 'light'); btnTheme.innerText = '🌙 Sombre';
-    } else {
-        root.setAttribute('data-theme', 'dark'); btnTheme.innerText = '☀️ Éclairé';
-    }
-});
-
 document.querySelectorAll('.pit').forEach(p => {
     p.addEventListener('click', () => move(parseInt(p.getAttribute('data-index'))));
 });
-document.getElementById('btn-reset').addEventListener('click', resetGameOnline);
+document.getElementById('btn-reset').addEventListener('click', () => ajaxPutInitialRoom(roomId, false));
+
+inputName.addEventListener('change', () => {
+    localPlayerName = inputName.value.trim() || "Anonyme";
+    localStorage.setItem('songo_pseudo', localPlayerName);
+    ajaxPatchPlayerStatus(localRole, localPlayerName, "online");
+});
 
 
-// --- LOGIQUE UNIQUE : RECHERCHE RÉCURSIVE & OUVRE LE NOUVEAU SALON ---
-async function generateUniqueRoomId() {
+// --- RECHERCHE AJAX DE SALON UNIQUE ET CRÉATION DIRECTE ---
+async function generateUniqueRoomIdViaAjax() {
     const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
-    const candidateRef = ref(db, `rooms/${candidateId}`);
-    
     try {
-        const snapshot = await get(candidateRef);
-        if (snapshot.exists()) {
-            return await generateUniqueRoomId(); 
+        let response = await fetch(`${BASE_API_URL}/${candidateId}.json`);
+        let data = await response.json();
+        if (data !== null) {
+            // Si le salon existe déjà, on relance récursivement la recherche AJAX
+            return await generateUniqueRoomIdViaAjax();
         }
         return candidateId;
-    } catch (error) {
-        console.error("Erreur de validation d'ID unique :", error);
+    } catch (e) {
         return candidateId;
     }
 }
 
 document.getElementById('btn-generate-room').addEventListener('click', async () => {
     const btn = document.getElementById('btn-generate-room');
-    btn.innerText = "⚡ Création du salon...";
+    btn.innerText = "⚡ Création via AJAX...";
     btn.disabled = true;
 
-    // 1. Trouve un identifiant unique disponible
-    const uniqueRoomId = await generateUniqueRoomId();
+    let uniqueId = await generateUniqueRoomIdViaAjax();
     
-    // 2. Initialise immédiatement la structure de la nouvelle partie sur Firebase
-    await initializeFirebaseRoom(uniqueRoomId, false);
+    // Initialise le nouveau salon sur le serveur
+    await ajaxPutInitialRoom(uniqueId, false);
     
-    // 3. Redirige immédiatement l'utilisateur sur la page pour débuter le jeu
-    window.location.href = `index.html?room=${uniqueRoomId}`;
+    // Ouvre immédiatement la page de jeu sur ce nouveau salon
+    window.location.href = `index.html?room=${uniqueId}`;
 });
 
 document.getElementById('btn-join-room').addEventListener('click', () => {
     const inputRoom = document.getElementById('input-join-room').value.trim();
     if (inputRoom.length === 4) {
         window.location.href = `index.html?room=${inputRoom}`;
-    } else {
-        alert("Veuillez entrer un ID valide à 4 chiffres.");
     }
 });
 
 
-// --- SYSTEME DE STOCKAGE / SAUVEGARDE DES SALONS LOCAUX ---
+// --- GESTION DES SALONS SAUVEGARDÉS (LOCAL STORAGE) ---
 document.getElementById('btn-save-current-room').addEventListener('click', () => {
-    let savedRooms = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
-    if (!savedRooms.includes(roomId)) {
-        savedRooms.push(roomId);
-        localStorage.setItem('songo_saved_rooms', JSON.stringify(savedRooms));
-        alert(`Salon #${roomId} ajouté à vos favoris !`);
+    let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
+    if (!saved.includes(roomId)) {
+        saved.push(roomId);
+        localStorage.setItem('songo_saved_rooms', JSON.stringify(saved));
+        alert(`Salon #${roomId} sauvegardé !`);
         renderSavedRooms();
-    } else {
-        alert("Ce salon fait déjà partie de votre liste de sauvegarde.");
     }
 });
 
 function renderSavedRooms() {
     const container = document.getElementById('saved-rooms-list');
-    let savedRooms = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
-    
-    if (savedRooms.length === 0) {
+    let saved = JSON.parse(localStorage.getItem('songo_saved_rooms')) || [];
+    if (saved.length === 0) {
         container.innerHTML = `<span style="color: gray; font-style: italic; text-align: center;">Aucun salon sauvegardé</span>`;
         return;
     }
-    
     container.innerHTML = "";
-    savedRooms.forEach(id => {
+    saved.forEach(id => {
         const row = document.createElement('div');
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.background = "var(--bg-card)";
-        row.style.padding = "4px 8px";
-        row.style.borderRadius = "4px";
-        row.style.border = "1px solid var(--border-btn)";
-
-        const link = document.createElement('span');
-        link.innerText = `Salon #${id}`;
-        link.style.cursor = "pointer";
-        link.style.fontWeight = "bold";
-        link.style.flex = "1";
-        link.addEventListener('click', () => {
-            window.location.href = `index.html?room=${id}`;
-        });
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.innerText = "❌";
-        deleteBtn.style.border = "none";
-        deleteBtn.style.background = "none";
-        deleteBtn.style.cursor = "pointer";
-        deleteBtn.style.fontSize = "0.75rem";
-        deleteBtn.addEventListener('click', (e) => {
+        row.style = "display:flex; justify-content:space-between; padding:4px; background:rgba(255,255,255,0.7); margin-bottom:2px; border-radius:4px;";
+        row.innerHTML = `<span style="cursor:pointer; font-weight:bold;">Salon #${id}</span><span style="cursor:pointer;">❌</span>`;
+        
+        row.firstChild.addEventListener('click', () => { window.location.href = `index.html?room=${id}`; });
+        row.lastChild.addEventListener('click', (e) => {
             e.stopPropagation();
-            savedRooms = savedRooms.filter(r => r !== id);
-            localStorage.setItem('songo_saved_rooms', JSON.stringify(savedRooms));
+            saved = saved.filter(r => r !== id);
+            localStorage.setItem('songo_saved_rooms', JSON.stringify(saved));
             renderSavedRooms();
         });
-
-        row.appendChild(link);
-        row.appendChild(deleteBtn);
         container.appendChild(row);
     });
 }
-
-// Initialisation au chargement de l'écran principal
 renderSavedRooms();
-
-window.addEventListener('beforeunload', () => {
-    if (localRole === "Sud" || localRole === "Nord") {
-        update(ref(db, `rooms/${roomId}/players/${localRole}`), { status: "offline" });
-    }
-});
