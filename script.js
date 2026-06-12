@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
 // CONFIGURATION FIREBASE (À REMPLACER PAR VOS PROPRES CLÉS DE PROJET CONFIGURÉES)
 const firebaseConfig = {
@@ -20,15 +20,15 @@ const db = getDatabase(app);
 const urlParams = new URLSearchParams(window.location.search);
 let roomId = urlParams.get('room');
 if (!roomId) {
-    roomId = Math.floor(1000 + Math.random() * 9000).toString(); // Salon aléatoire à 4 chiffres par défaut
+    roomId = Math.floor(1000 + Math.random() * 9000).toString(); // Salon par défaut
     window.history.pushState({}, '', `?room=${roomId}`);
 }
 
 // Variables locales de l'état du joueur local
-let localRole = ""; // Affecté automatiquement : "Sud" ou "Nord"
+let localRole = ""; // "Sud", "Nord" ou "Spectateur"
 let localPlayerName = localStorage.getItem('songo_pseudo') || "Joueur_" + Math.floor(Math.random() * 99);
 
-// Références de synchronisation Database
+// Référence de synchronisation Database
 const roomRef = ref(db, `rooms/${roomId}`);
 
 // --- VARIABLES LOCALES DE JEU SYNC ---
@@ -68,20 +68,17 @@ inputName.addEventListener('input', () => {
 onValue(roomRef, (snapshot) => {
     const data = snapshot.val();
     
-    // Si la room n'existe pas encore sur Firebase, on l'initialise
     if (!data) {
         initializeFirebaseRoom();
         return;
     }
 
-    // Récupération de l'état global partagé
     board = data.board;
     scores = data.scores;
     currentPlayer = data.currentPlayer;
     gameActive = data.gameActive;
     playersSync = data.players || playersSync;
 
-    // Détermination automatique du rôle (Sud si vide, Nord si Sud occupé, ou Spectateur)
     if (!localRole) {
         if (!data.players || !data.players.Sud || data.players.Sud.status === "offline") {
             localRole = "Sud";
@@ -93,13 +90,11 @@ onValue(roomRef, (snapshot) => {
         document.getElementById('local-role-val').innerText = localRole;
         document.getElementById('menu-player-role').innerText = localRole;
         
-        // Validation de présence en ligne
         if (localRole === "Sud" || localRole === "Nord") {
             update(ref(db, `rooms/${roomId}/players/${localRole}`), { name: localPlayerName, status: "online" });
         }
     }
 
-    // Journalisation du dernier coup reçu
     if (data.lastMoveLog) {
         document.getElementById('last-move-txt').innerText = data.lastMoveLog;
         appendHistoryOnce(data.lastMoveLog);
@@ -130,29 +125,23 @@ function updateUI() {
     document.getElementById('menu-room-id').innerText = `#${roomId}`;
     document.getElementById('top-room-id').innerText = `#${roomId}`;
 
-    // Récupération dynamique des vrais pseudos depuis Firebase
     const nameSud = playersSync.Sud ? playersSync.Sud.name : "En attente...";
     const nameNord = playersSync.Nord ? playersSync.Nord.name : "En attente...";
 
-    // Remplacement des titres fixes "Sud" et "Nord" par les pseudos
     document.getElementById('title-side-sud').innerText = nameSud;
     document.getElementById('title-side-nord').innerText = nameNord;
 
-    // Badges en ligne / hors ligne
     updateStatusBadge('status-sud', playersSync.Sud);
     updateStatusBadge('status-nord', playersSync.Nord);
 
-    // Scores
     document.getElementById('huge-score-sud').innerText = scores[0];
     document.getElementById('huge-score-nord').innerText = scores[1];
     document.getElementById('badge-g-sud').innerText = scores[0];
     document.getElementById('badge-g-nord').innerText = scores[1];
 
-    // Attribution dynamique du nom de celui qui doit jouer
     const currentTurnName = currentPlayer === "Sud" ? nameSud : nameNord;
     document.getElementById('current-turn-val').innerText = currentTurnName;
 
-    // Message d'action central contextuel avec pseudos
     if (!gameActive) {
         document.getElementById('center-message').innerText = "Partie terminée !";
     } else if (localRole === "Spectateur") {
@@ -163,7 +152,6 @@ function updateUI() {
         document.getElementById('center-message').innerText = `Attente de ${currentTurnName}...`;
     }
 
-    // Graines dans les trous
     for(let idx = 0; idx < 14; idx++) {
         const count = board[idx];
         const lbl = document.getElementById(`lbl-${idx}`);
@@ -204,7 +192,7 @@ function renderGrenier(id, count) {
     }
 }
 
-// --- LOGIQUE DU COUP SEMAILLE & INTEGRATION RESEAU ---
+// --- LOGIQUE DU SEMAILLE & PRISE ---
 function move(startIndex) {
     if (!gameActive) return;
     if (localRole === "Spectateur" || currentPlayer !== localRole) return;
@@ -230,7 +218,6 @@ function move(startIndex) {
         board[currentIndex] = 0;
     }
 
-    // Identification du nom actif pour l'historique
     const activeName = currentPlayer === "Sud" ? playersSync.Sud.name : playersSync.Nord.name;
     let nextPlayer = currentPlayer === "Sud" ? "Nord" : "Sud";
     let logMsg = `${activeName} a joué ${pitLabels[startIndex]} (Prise : ${captured})`;
@@ -241,7 +228,6 @@ function move(startIndex) {
         scores[1] += captured;
     }
 
-    // Vérification fin de partie
     let nextGameActive = true;
     if (scores[0] >= 40 || scores[1] >= 40 || board.reduce((a,b)=>a+b, 0) < 10) {
         nextGameActive = false;
@@ -249,7 +235,6 @@ function move(startIndex) {
         logMsg += ` - Partie Terminée ! Victoire de ${winnerName}`;
     }
 
-    // EXPÉDITION DU NOUVEL ÉTAT VERS FIREBASE
     update(roomRef, {
         board: board,
         scores: scores,
@@ -280,16 +265,11 @@ function resetGameOnline() {
     document.getElementById('history-list').innerHTML = '';
 }
 
-// --- DISPATCHER ROUTING ÉVÉNEMENTS ---
+// --- CONFIGURATION DES ÉCOUTEURS D'ÉVÉNEMENTS ---
 document.getElementById('btn-open-menu').addEventListener('click', () => menuModal.classList.remove('hidden'));
 document.getElementById('btn-close-menu').addEventListener('click', () => menuModal.classList.add('hidden'));
 document.getElementById('btn-menu-annuler').addEventListener('click', () => menuModal.classList.add('hidden'));
-document.getElementById('btn-menu-nouvelle-partie')?.addEventListener('click', () => {
-    menuModal.classList.add('hidden');
-    resetGameOnline();
-});
 
-// Modales Règles & Prises
 document.getElementById('btn-prise').addEventListener('click', () => { menuModal.classList.add('hidden'); rulesModal.classList.remove('hidden'); });
 document.getElementById('btn-close-rules').addEventListener('click', () => { rulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-back-to-menu').addEventListener('click', () => { rulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
@@ -298,7 +278,6 @@ document.getElementById('btn-general-rules').addEventListener('click', () => { m
 document.getElementById('btn-close-general-rules').addEventListener('click', () => { generalRulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 document.getElementById('btn-rules-back-to-menu').addEventListener('click', () => { generalRulesModal.classList.add('hidden'); menuModal.classList.remove('hidden'); });
 
-// Thèmes visuels
 const btnTheme = document.getElementById('btn-theme');
 btnTheme.addEventListener('click', () => {
     const root = document.documentElement;
@@ -309,31 +288,47 @@ btnTheme.addEventListener('click', () => {
     }
 });
 
-// Actionneurs sur les trous
 document.querySelectorAll('.pit').forEach(p => {
     p.addEventListener('click', () => move(parseInt(p.getAttribute('data-index'))));
 });
 document.getElementById('btn-reset').addEventListener('click', resetGameOnline);
 
-// --- NOUVELLE LOGIQUE : AIGUILLAGE ET GESTION DES SALONS À LA DEMANDE ---
+// --- TECHNIQUE : RECHERCHE RÉCURSIVE DE SALON UNIQUE LIBRE ---
+async function generateUniqueRoomId() {
+    const candidateId = Math.floor(1000 + Math.random() * 9000).toString();
+    const candidateRef = ref(db, `rooms/${candidateId}`);
+    
+    try {
+        const snapshot = await get(candidateRef);
+        if (snapshot.exists()) {
+            // L'ID existe déjà dans la base Firebase globale, on relance récursivement
+            return await generateUniqueRoomId(); 
+        }
+        return candidateId;
+    } catch (error) {
+        console.error("Erreur de validation d'ID unique :", error);
+        return candidateId;
+    }
+}
 
-// Bouton : Générer un nouveau salon aléatoire
-document.getElementById('btn-generate-room').addEventListener('click', () => {
-    const newRoomId = Math.floor(1000 + Math.random() * 9000).toString();
-    window.location.href = `index.html?room=${newRoomId}`;
+document.getElementById('btn-generate-room').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate-room');
+    btn.innerText = "⚡ Vérification réseau...";
+    btn.disabled = true;
+
+    const uniqueRoomId = await generateUniqueRoomId();
+    window.location.href = `index.html?room=${uniqueRoomId}`;
 });
 
-// Bouton : Entrer un ID et rejoindre
 document.getElementById('btn-join-room').addEventListener('click', () => {
     const inputRoom = document.getElementById('input-join-room').value.trim();
     if (inputRoom.length === 4) {
         window.location.href = `index.html?room=${inputRoom}`;
     } else {
-        alert("Veuillez entrer un ID de salon valide à 4 chiffres (ex: 4872).");
+        alert("Veuillez entrer un ID valide à 4 chiffres.");
     }
 });
 
-// Nettoyage si le joueur quitte ou ferme l'onglet
 window.addEventListener('beforeunload', () => {
     if (localRole === "Sud" || localRole === "Nord") {
         update(ref(db, `rooms/${roomId}/players/${localRole}`), { status: "offline" });
